@@ -1,0 +1,108 @@
+version: '3.8'
+
+services:
+  # Consumer API
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: appzap_consumer_api
+    ports:
+      - '9000:9000'
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=9000
+      - MONGODB_URI=mongodb://mongodb:27017/appzap_consumer_dev
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - AUTH_API_URL=${AUTH_API_URL}
+      - POS_V2_API_URL=${POS_V2_API_URL}
+      - SUPPLIER_API_URL=${SUPPLIER_API_URL}
+      - SUPPLIER_EXCHANGE_KEY=${SUPPLIER_EXCHANGE_KEY}
+      - CONSUMER_API_URL=http://localhost:9000
+    depends_on:
+      - mongodb
+      - redis
+    networks:
+      - appzap-network
+    restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs
+
+  # MongoDB
+  mongodb:
+    image: mongo:7.0
+    container_name: appzap_consumer_mongodb
+    ports:
+      - '27017:27017'
+    environment:
+      - MONGO_INITDB_DATABASE=appzap_consumer_dev
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    networks:
+      - appzap-network
+    restart: unless-stopped
+    command: mongod --bind_ip_all
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: appzap_consumer_redis
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    networks:
+      - appzap-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  # Mongo Express (Database UI) - Development only
+  mongo-express:
+    image: mongo-express:latest
+    container_name: appzap_consumer_mongo_express
+    ports:
+      - '8081:8081'
+    environment:
+      - ME_CONFIG_MONGODB_URL=mongodb://mongodb:27017/
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=admin123
+    depends_on:
+      - mongodb
+    networks:
+      - appzap-network
+    restart: unless-stopped
+    profiles:
+      - dev
+
+  # Redis Commander (Redis UI) - Development only
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: appzap_consumer_redis_commander
+    ports:
+      - '8082:8081'
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    depends_on:
+      - redis
+    networks:
+      - appzap-network
+    restart: unless-stopped
+    profiles:
+      - dev
+
+volumes:
+  mongodb_data:
+    driver: local
+  mongodb_config:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  appzap-network:
+    driver: bridge
+
