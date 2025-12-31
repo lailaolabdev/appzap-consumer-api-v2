@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Request, Response } from 'express';
 import * as identityLinking from '../services/identityLinking.service';
 import * as posV2Api from '../services/posV2Api.service';

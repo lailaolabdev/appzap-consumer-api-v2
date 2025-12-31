@@ -43,6 +43,7 @@ export const requestOTP = async (req: Request, res: Response): Promise<void> => 
     });
 
     res.json({
+      success: true,
       message: result.message,
       referenceId: result.referenceId,
       expiresIn: result.expiresIn,
@@ -98,10 +99,8 @@ export const verifyOTP = async (req: Request, res: Response): Promise<void> => {
       user = await User.create({
         phone: normalizedPhone,
         authProviderId: authResult.user?.id,
-        fullName: authResult.user?.firstName
-          ? `${authResult.user.firstName} ${authResult.user.lastName || ''}`.trim()
-          : undefined,
-        email: authResult.user?.email,
+        fullName: authResult.user?.nickName || undefined,
+        email: undefined, // Email not provided by Auth API
         roles: ['consumer'],
         activeProfile: 'personal',
         points: { balance: 0, tier: 'bronze', totalEarned: 0, totalRedeemed: 0 },
@@ -365,4 +364,5 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
     });
   }
 };
+
 

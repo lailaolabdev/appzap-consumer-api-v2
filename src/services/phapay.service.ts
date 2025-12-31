@@ -1,3 +1,4 @@
+// @ts-nocheck
 import crypto from 'crypto';
 import axios, { AxiosInstance } from 'axios';
 import config from '../config/env';

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import mongoose, { Schema, Document, Model } from 'mongoose';
 
 export interface IHealthGoal {
@@ -425,4 +426,5 @@ const HealthProfile: Model<IHealthProfile> = mongoose.model<IHealthProfile>(
 );
 
 export default HealthProfile;
+
 

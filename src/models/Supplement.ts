@@ -3,7 +3,7 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 export interface ISupplementNutrition {
   servingSize: string; // e.g., "2 capsules", "1 scoop (30g)"
   servingsPerContainer: number;
-  nutrientsPer Serving: {
+  nutrientsPerServing: {
     name: string; // e.g., "Protein", "Vitamin D", "Omega-3"
     amount: number;
     unit: string; // g, mg, mcg, IU

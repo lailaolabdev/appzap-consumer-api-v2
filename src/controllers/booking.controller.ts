@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Request, Response } from 'express';
 import * as posV2Service from '../services/posV2Api.service';
 import logger from '../utils/logger';

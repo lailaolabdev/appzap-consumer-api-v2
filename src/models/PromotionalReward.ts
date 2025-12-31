@@ -168,3 +168,4 @@ const PromotionalReward: Model<IPromotionalReward> = mongoose.model<IPromotional
 
 export default PromotionalReward;
 
+

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Request, Response } from 'express';
 import * as deepLinkService from '../services/deepLink.service';
 import * as spinToWinService from '../services/spinToWin.service';

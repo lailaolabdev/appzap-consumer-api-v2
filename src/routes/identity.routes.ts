@@ -64,3 +64,4 @@ router.put('/merchant-profile', authenticate, identityLinkingController.updateMe
 
 export default router;
 
+

@@ -76,3 +76,4 @@ const LoyaltyTransaction: Model<ILoyaltyTransaction> =
 
 export default LoyaltyTransaction;
 
+

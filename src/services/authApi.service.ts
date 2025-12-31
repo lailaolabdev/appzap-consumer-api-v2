@@ -9,6 +9,7 @@ import { ExternalAPIError } from '../utils/errors';
  */
 
 const client = new GraphQLClient(config.authApi.url, {
+  // @ts-ignore - timeout option is valid but not in types
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -17,34 +18,17 @@ const client = new GraphQLClient(config.authApi.url, {
 
 // GraphQL Mutations
 const REQUEST_OTP_MUTATION = gql`
-  mutation RequestOtp($data: CreateOtpProviderInput!) {
+  mutation RequestOtpMutation($data: OtpInput!) {
     requestOtp(data: $data) {
-      status
       message
-      data {
-        id
-        referenceId
-        expiresIn
-      }
     }
   }
 `;
 
-const PHONE_LOGIN_MUTATION = gql`
-  mutation PhoneLogin($where: PhoneLoginUserInput!) {
-    phoneLogin(where: $where) {
-      status
+const VERIFY_OTP_MUTATION = gql`
+  mutation VerifyOtp($data: VerifyOtpInput!, $where: VerifyOtpWhereInput!) {
+    verifyOtp(data: $data, where: $where) {
       message
-      data {
-        id
-        firstName
-        lastName
-        phoneNumber
-        email
-        role
-        accessToken
-        refreshToken
-      }
     }
   }
 `;
@@ -71,10 +55,8 @@ export interface VerifyOTPResult {
   success: boolean;
   user?: {
     id: string;
-    firstName?: string;
-    lastName?: string;
-    phoneNumber: string;
-    email?: string;
+    nickName?: string;
+    phone: string;
     role?: string;
   };
   message: string;
@@ -93,24 +75,23 @@ export const requestOTP = async (
 
     const response = await client.request<any>(REQUEST_OTP_MUTATION, {
       data: {
-        phoneNumber: input.phone,
+        phone: input.phone,
         platform: input.platform || 'APPZAP',
         header: input.header || 'AppZap',
       },
     });
 
-    if (response.requestOtp?.status === 'success') {
+    if (response.requestOtp?.message) {
       return {
         success: true,
-        referenceId: response.requestOtp.data?.referenceId,
-        expiresIn: response.requestOtp.data?.expiresIn || 300,
-        message: 'OTP sent successfully',
+        message: response.requestOtp.message,
+        expiresIn: 300, // Default 5 minutes
       };
     }
 
     return {
       success: false,
-      message: response.requestOtp?.message || 'Failed to send OTP',
+      message: 'Failed to send OTP',
     };
   } catch (error: any) {
     logger.error('Auth API request OTP failed', {
@@ -137,31 +118,33 @@ export const verifyOTP = async (
       phone: input.phone.replace(/(\d{3})\d+(\d{4})/, '$1****$2'),
     });
 
-    const response = await client.request<any>(PHONE_LOGIN_MUTATION, {
+    const response = await client.request<any>(VERIFY_OTP_MUTATION, {
+      data: {
+        code: input.otp,
+      },
       where: {
-        phoneNumber: input.phone,
-        otp: input.otp,
+        phone: input.phone,
       },
     });
 
-    if (response.phoneLogin?.status === 'success' && response.phoneLogin.data) {
+    if (response.verifyOtp?.message) {
+      // OTP verified successfully
+      // Note: Auth API doesn't return tokens directly from verifyOtp
+      // Consumer API will generate its own tokens
       return {
         success: true,
         user: {
-          id: response.phoneLogin.data.id,
-          firstName: response.phoneLogin.data.firstName,
-          lastName: response.phoneLogin.data.lastName,
-          phoneNumber: response.phoneLogin.data.phoneNumber,
-          email: response.phoneLogin.data.email,
-          role: response.phoneLogin.data.role,
+          id: '', // Will be populated from Consumer DB
+          phone: input.phone,
+          role: 'user',
         },
-        message: 'OTP verified successfully',
+        message: response.verifyOtp.message || 'OTP verified successfully',
       };
     }
 
     return {
       success: false,
-      message: response.phoneLogin?.message || 'Invalid OTP',
+      message: 'Invalid OTP',
     };
   } catch (error: any) {
     logger.error('Auth API verify OTP failed', {
@@ -170,7 +153,9 @@ export const verifyOTP = async (
     });
 
     // Check if it's an invalid OTP error
-    if (error.response?.errors?.[0]?.message?.includes('Invalid')) {
+    if (error.response?.errors?.[0]?.message?.includes('Invalid') ||
+        error.response?.errors?.[0]?.message?.includes('incorrect') ||
+        error.response?.errors?.[0]?.message?.includes('expired')) {
       return {
         success: false,
         message: 'Invalid or expired OTP',

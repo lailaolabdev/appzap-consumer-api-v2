@@ -53,21 +53,38 @@ export interface ProductListParams {
 
 export const getProducts = async (params: ProductListParams = {}) => {
   logger.info('Fetching products from Supplier API', { params });
-  const response = await supplierApiClient.get('/api/products', { params });
+  
+  // Calculate skip from page and limit
+  const page = params.page || 1;
+  const limit = params.limit || 24;
+  const skip = (page - 1) * limit;
+  
+  // Build query params based on Ingredients API documentation
+  const queryParams: any = {
+    createdBy: '6683700875395b0f0741b48d', // Default seller ID from docs
+  };
+  
+  if (params.category) {
+    queryParams.categoryId = params.category;
+  }
+  
+  const response = await supplierApiClient.get(`/mobile/product/get/skip/${skip}/limit/${limit}`, {
+    params: queryParams,
+  });
   return response.data;
 };
 
 export const getProductById = async (productId: string, priceType: 'retail' | 'wholesale' = 'retail') => {
   logger.info('Fetching product details from Supplier API', { productId, priceType });
-  const response = await supplierApiClient.get(`/api/products/${productId}`, {
-    params: { priceType },
-  });
+  // Note: Supplier API doesn't support priceType parameter - it returns all pricing info
+  const response = await supplierApiClient.get(`/product/get/${productId}`);
   return response.data;
 };
 
 export const getProductCategories = async () => {
   logger.info('Fetching product categories from Supplier API');
-  const response = await supplierApiClient.get('/api/products/categories');
+  // Note: No /v6/ prefix - Supplier API doesn't use version prefixes
+  const response = await supplierApiClient.get('/supplier-categories');
   return response.data;
 };
 
@@ -443,4 +460,5 @@ export default {
   calculateDeliveryFee,
   getDeliveryTimeSlots,
 };
+
 

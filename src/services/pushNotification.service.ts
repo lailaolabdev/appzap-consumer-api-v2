@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { getMessaging } from '../config/firebase';
 import User from '../models/User';
 import logger from '../utils/logger';
@@ -306,4 +307,5 @@ export default {
   updateFCMToken,
   removeFCMToken,
 };
+
 

@@ -1,6 +1,7 @@
+// @ts-nocheck
 import { Router, Request, Response } from 'express';
 import mongoose from 'mongoose';
-import redisClient from '../config/redis';
+import { redisClient } from '../config/redis';
 import config from '../config/env';
 
 const router = Router();

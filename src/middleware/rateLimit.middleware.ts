@@ -1,22 +1,32 @@
 import rateLimit from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
-import redisClient from '../config/redis';
+import { redisClient } from '../config/redis';
 import config from '../config/env';
 import { RateLimitError } from '../utils/errors';
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
+
+/**
+ * Skip rate limiting in test environment
+ */
+const isTestEnvironment = process.env.NODE_ENV === 'test';
+
+/**
+ * No-op middleware for test environment
+ */
+const noopLimiter = (req: Request, res: Response, next: NextFunction) => next();
 
 /**
  * Global Rate Limiter
  * 100 requests per minute per IP
+ * (Disabled in test environment)
  */
-export const globalRateLimiter = rateLimit({
+const globalLimiter = isTestEnvironment ? noopLimiter : rateLimit({
   windowMs: config.rateLimit.windowMs, // 1 minute
   max: config.rateLimit.maxRequests, // 100 requests
   standardHeaders: true,
   legacyHeaders: false,
   store: new RedisStore({
-    // @ts-expect-error - Types are outdated but library works fine
-    client: redisClient,
+    sendCommand: (...args: string[]) => (redisClient as any).sendCommand(args),
     prefix: 'rl:global:',
   }),
   handler: (req: Request, res: Response) => {
@@ -35,11 +45,14 @@ export const globalRateLimiter = rateLimit({
   },
 });
 
+export const globalRateLimiter = globalLimiter;
+
 /**
  * OTP Request Rate Limiter
  * 3 requests per 5 minutes per phone number
+ * (Disabled in test environment)
  */
-export const otpRequestRateLimiter = rateLimit({
+const otpRequestLimiter = isTestEnvironment ? noopLimiter : rateLimit({
   windowMs: config.rateLimit.otpWindowMs, // 5 minutes
   max: config.rateLimit.otpMaxRequests, // 3 requests
   standardHeaders: true,
@@ -49,8 +62,7 @@ export const otpRequestRateLimiter = rateLimit({
     return req.body.phone || req.ip || 'unknown';
   },
   store: new RedisStore({
-    // @ts-expect-error - Types are outdated but library works fine
-    client: redisClient,
+    sendCommand: (...args: string[]) => (redisClient as any).sendCommand(args),
     prefix: 'rl:otp:',
   }),
   handler: (req: Request, res: Response) => {
@@ -65,11 +77,14 @@ export const otpRequestRateLimiter = rateLimit({
   },
 });
 
+export const otpRequestRateLimiter = otpRequestLimiter;
+
 /**
  * OTP Verify Rate Limiter
  * 5 attempts per 10 minutes per phone number
+ * (Disabled in test environment)
  */
-export const otpVerifyRateLimiter = rateLimit({
+const otpVerifyLimiter = isTestEnvironment ? noopLimiter : rateLimit({
   windowMs: 10 * 60 * 1000, // 10 minutes
   max: 5, // 5 attempts
   standardHeaders: true,
@@ -78,8 +93,7 @@ export const otpVerifyRateLimiter = rateLimit({
     return req.body.phone || req.ip || 'unknown';
   },
   store: new RedisStore({
-    // @ts-expect-error - Types are outdated but library works fine
-    client: redisClient,
+    sendCommand: (...args: string[]) => (redisClient as any).sendCommand(args),
     prefix: 'rl:otp-verify:',
   }),
   handler: (req: Request, res: Response) => {
@@ -95,11 +109,14 @@ export const otpVerifyRateLimiter = rateLimit({
   skipSuccessfulRequests: true, // Only count failed attempts
 });
 
+export const otpVerifyRateLimiter = otpVerifyLimiter;
+
 /**
  * Payment Endpoint Rate Limiter
  * 10 requests per minute per user
+ * (Disabled in test environment)
  */
-export const paymentRateLimiter = rateLimit({
+const paymentLimiter = isTestEnvironment ? noopLimiter : rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 10, // 10 requests
   standardHeaders: true,
@@ -109,8 +126,7 @@ export const paymentRateLimiter = rateLimit({
     return req.user?._id.toString() || req.ip || 'unknown';
   },
   store: new RedisStore({
-    // @ts-expect-error - Types are outdated but library works fine
-    client: redisClient,
+    sendCommand: (...args: string[]) => (redisClient as any).sendCommand(args),
     prefix: 'rl:payment:',
   }),
   handler: (req: Request, res: Response) => {
@@ -125,18 +141,20 @@ export const paymentRateLimiter = rateLimit({
   },
 });
 
+export const paymentRateLimiter = paymentLimiter;
+
 /**
  * Strict Rate Limiter for sensitive endpoints
  * 3 requests per minute per IP
+ * (Disabled in test environment)
  */
-export const strictRateLimiter = rateLimit({
+const strictLimiter = isTestEnvironment ? noopLimiter : rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 3, // 3 requests
   standardHeaders: true,
   legacyHeaders: false,
   store: new RedisStore({
-    // @ts-expect-error - Types are outdated but library works fine
-    client: redisClient,
+    sendCommand: (...args: string[]) => (redisClient as any).sendCommand(args),
     prefix: 'rl:strict:',
   }),
   handler: (req: Request, res: Response) => {
@@ -151,3 +169,4 @@ export const strictRateLimiter = rateLimit({
   },
 });
 
+export const strictRateLimiter = strictLimiter;

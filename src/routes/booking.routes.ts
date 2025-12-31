@@ -44,3 +44,4 @@ router.delete('/:reservationId', authenticate, bookingController.cancelReservati
 
 export default router;
 
+

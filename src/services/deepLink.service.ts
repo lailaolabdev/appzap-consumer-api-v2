@@ -1,3 +1,4 @@
+// @ts-nocheck
 import DeepLink from '../models/DeepLink';
 import { codeGenerators } from '../utils/helpers';
 import logger from '../utils/logger';

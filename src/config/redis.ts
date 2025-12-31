@@ -374,6 +374,38 @@ export const isPubSubReady = (): boolean => {
 // Export connection status
 export { isRedisConnected };
 
+// Redis helpers for common operations
+export const redisHelpers = {
+  async get(key: string): Promise<string | null> {
+    return redisClient?.get(key) || null;
+  },
+  
+  async set(key: string, value: string): Promise<void> {
+    await redisClient?.set(key, value);
+  },
+  
+  async setWithTTL(key: string, value: string, ttlSeconds: number): Promise<void> {
+    await redisClient?.setEx(key, ttlSeconds, value);
+  },
+  
+  async del(key: string): Promise<void> {
+    await redisClient?.del(key);
+  },
+  
+  async exists(key: string): Promise<boolean> {
+    const result = await redisClient?.exists(key);
+    return result === 1;
+  },
+  
+  async incr(key: string): Promise<number> {
+    return (await redisClient?.incr(key)) || 0;
+  },
+  
+  async expire(key: string, seconds: number): Promise<void> {
+    await redisClient?.expire(key, seconds);
+  },
+};
+
 export default {
   redisClient,
   connectRedis,
@@ -390,4 +422,5 @@ export default {
   isPubSubReady,
   redisPublisher,
   redisSubscriber,
+  redisHelpers,
 };

@@ -77,3 +77,4 @@ router.delete('/fcm-token', authenticate, async (req, res) => {
 
 export default router;
 
+

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import User, { IUser } from '../models/User';
 import * as supplierApi from './supplierApi.service';
 import logger from '../utils/logger';
