@@ -39,6 +39,24 @@ export interface IPushToken {
   addedAt: Date;
 }
 
+/**
+ * V1 Integration Data
+ * For future linking with POS V1 (appzap-app-api) user accounts
+ * This allows V1 users to access their historical data when they migrate to V2
+ */
+export interface IV1Integration {
+  userId?: string;           // V1 UserApp._id
+  userAuthId?: string;       // V1 userAuthId (for auth matching)
+  phone?: string;            // V1 phone number (may differ from V2)
+  linkedAt?: Date;           // When accounts were linked
+  dataSynced?: {
+    orders: boolean;         // V1 order history accessible
+    reviews: boolean;        // V1 reviews accessible
+    points: boolean;         // V1 points accessible
+    reservations: boolean;   // V1 reservations accessible
+  };
+}
+
 export interface IUser extends Document {
   phone: string;
   fullName?: string;
@@ -74,6 +92,9 @@ export interface IUser extends Document {
 
   // Supplier API Integration
   supplierId?: string; // Personal Supplier customer ID (B2C)
+
+  // V1 Integration (for future POS V1 data access)
+  v1Integration?: IV1Integration;
 
   // Soft delete
   isDeleted: boolean;
@@ -148,6 +169,26 @@ const PushTokenSchema = new Schema<IPushToken>(
   { _id: false }
 );
 
+/**
+ * V1 Integration Schema
+ * Stores linking information for POS V1 user accounts
+ */
+const V1IntegrationSchema = new Schema<IV1Integration>(
+  {
+    userId: { type: String, trim: true },        // V1 UserApp._id
+    userAuthId: { type: String, trim: true },   // V1 userAuthId
+    phone: { type: String, trim: true },        // V1 phone (for matching)
+    linkedAt: { type: Date },
+    dataSynced: {
+      orders: { type: Boolean, default: false },
+      reviews: { type: Boolean, default: false },
+      points: { type: Boolean, default: false },
+      reservations: { type: Boolean, default: false },
+    },
+  },
+  { _id: false }
+);
+
 // Main User Schema
 const UserSchema = new Schema<IUser>(
   {
@@ -205,6 +246,9 @@ const UserSchema = new Schema<IUser>(
     // Supplier API Integration
     supplierId: { type: String, trim: true },
 
+    // V1 Integration (for future POS V1 data access)
+    v1Integration: { type: V1IntegrationSchema },
+
     // Soft delete
     isDeleted: { type: Boolean, default: false },
     deletedAt: { type: Date },
@@ -223,6 +267,9 @@ UserSchema.index({ roles: 1 });
 UserSchema.index({ createdAt: -1 });
 UserSchema.index({ isDeleted: 1, phone: 1 });
 UserSchema.index({ 'merchantProfiles.restaurantId': 1 });
+// V1 Integration indexes (for future account linking)
+UserSchema.index({ 'v1Integration.userId': 1 }, { sparse: true });
+UserSchema.index({ 'v1Integration.phone': 1 }, { sparse: true });
 
 // Methods
 UserSchema.methods.getActiveProfileDetails = function (): IMerchantProfile | null {
