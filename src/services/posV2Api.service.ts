@@ -11,27 +11,42 @@ import { redisHelpers } from '../config/redis';
  * Handles all communication with POS V2 API for restaurants, menus, and orders
  */
 
+// Check if API key is properly configured
+const hasApiKey = !!(config.posV2Api.apiKey && config.posV2Api.apiKey.startsWith('appzap_pos_'));
+
+// Log configuration status on initialization
+logger.info('[POS V2] Initializing service:', {
+  baseUrl: config.posV2Api.url,
+  hasApiKey,
+});
+
+if (!hasApiKey) {
+  logger.warn('[POS V2] ⚠️  No API key configured! Consumer API routes on POS V2 will require authentication.');
+  logger.warn('[POS V2] To generate a key, use: POST /api/v1/api-keys with preset: consumer_app');
+}
+
 // Create axios instance
 const posV2Client: AxiosInstance = axios.create({
   baseURL: config.posV2Api.url,
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
-    ...(config.posV2Api.apiKey && { 'X-API-Key': config.posV2Api.apiKey }),
+    ...(hasApiKey && { 'X-API-Key': config.posV2Api.apiKey }),
   },
 });
 
 // Request interceptor for logging
 posV2Client.interceptors.request.use(
-  (config) => {
-    logger.debug('POS V2 API request', {
-      method: config.method?.toUpperCase(),
-      url: config.url,
+  (reqConfig) => {
+    logger.debug('[POS V2] API request', {
+      method: reqConfig.method?.toUpperCase(),
+      url: reqConfig.url,
+      hasApiKey,
     });
-    return config;
+    return reqConfig;
   },
   (error) => {
-    logger.error('POS V2 API request error', { error: error.message });
+    logger.error('[POS V2] API request error', { error: error.message });
     return Promise.reject(error);
   }
 );
@@ -40,7 +55,11 @@ posV2Client.interceptors.request.use(
 posV2Client.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
-    logger.error('POS V2 API response error', {
+    // Provide better error messages for common issues
+    if (error.response?.status === 401) {
+      logger.error('[POS V2] Authentication failed. Check if POS_V2_API_KEY is configured correctly.');
+    }
+    logger.error('[POS V2] API response error', {
       url: error.config?.url,
       status: error.response?.status,
       message: error.message,
@@ -441,10 +460,205 @@ export const verifyRestaurantLinkCode = async (
 };
 
 // ============================================================================
+// CONSUMER API ENDPOINTS (New endpoints with API key auth)
+// ============================================================================
+
+/**
+ * Get restaurants via Consumer API
+ * POS V2 Endpoint: GET /api/v1/consumer/restaurants
+ */
+export const getRestaurantsViaConsumerApi = async (params?: {
+  page?: number;
+  limit?: number;
+  search?: string;
+  lat?: number;
+  lng?: number;
+  radius?: number;
+  cuisineType?: string;
+}): Promise<{ data: POSRestaurant[]; total: number }> => {
+  try {
+    const response = await posV2Client.get('/api/v1/consumer/restaurants', { params });
+    return {
+      data: response.data?.data || [],
+      total: response.data?.pagination?.total || 0,
+    };
+  } catch (error) {
+    logger.error('Consumer API: Failed to get restaurants', { error });
+    throw error;
+  }
+};
+
+/**
+ * Get restaurant details via Consumer API
+ * POS V2 Endpoint: GET /api/v1/consumer/restaurants/:id
+ */
+export const getRestaurantViaConsumerApi = async (restaurantId: string): Promise<POSRestaurant | null> => {
+  try {
+    const response = await posV2Client.get(`/api/v1/consumer/restaurants/${restaurantId}`);
+    return response.data?.data || null;
+  } catch (error) {
+    logger.error('Consumer API: Failed to get restaurant', { restaurantId, error });
+    throw error;
+  }
+};
+
+/**
+ * Get menu via Consumer API
+ * POS V2 Endpoint: GET /api/v1/consumer/restaurants/:id/menu
+ */
+export const getMenuViaConsumerApi = async (restaurantId: string, branchId?: string): Promise<any> => {
+  try {
+    const response = await posV2Client.get(`/api/v1/consumer/restaurants/${restaurantId}/menu`, {
+      params: branchId ? { branchId } : undefined,
+    });
+    return response.data?.data || null;
+  } catch (error) {
+    logger.error('Consumer API: Failed to get menu', { restaurantId, error });
+    throw error;
+  }
+};
+
+/**
+ * Get table availability via Consumer API
+ * POS V2 Endpoint: GET /api/v1/consumer/tables/availability/:restaurantId
+ */
+export const getTableAvailabilityViaConsumerApi = async (
+  restaurantId: string,
+  params: {
+    date: string;
+    time?: string;
+    guests: number;
+    duration?: number;
+    branchId?: string;
+  }
+): Promise<any> => {
+  try {
+    const response = await posV2Client.get(`/api/v1/consumer/tables/availability/${restaurantId}`, { params });
+    return response.data?.data || null;
+  } catch (error) {
+    logger.error('Consumer API: Failed to get table availability', { restaurantId, error });
+    throw error;
+  }
+};
+
+/**
+ * Create order via Consumer API
+ * POS V2 Endpoint: POST /api/v1/consumer/orders
+ */
+export const createOrderViaConsumerApi = async (orderData: {
+  restaurantId: string;
+  branchId?: string;
+  tableId?: string;
+  items: any[];
+  customerInfo?: { name?: string; phone?: string; email?: string };
+  orderType?: string;
+  notes?: string;
+  scheduledTime?: string;
+  externalOrderId?: string;
+}): Promise<any> => {
+  try {
+    const response = await posV2Client.post('/api/v1/consumer/orders', orderData);
+    return response.data?.data || null;
+  } catch (error) {
+    logger.error('Consumer API: Failed to create order', { error });
+    throw error;
+  }
+};
+
+/**
+ * Create reservation via Consumer API
+ * POS V2 Endpoint: POST /api/v1/consumer/reservations
+ */
+export const createReservationViaConsumerApi = async (reservationData: {
+  restaurantId: string;
+  branchId?: string;
+  tableId?: string;
+  date: string;
+  time: string;
+  guests: number;
+  customerInfo?: { name?: string; phone?: string; email?: string };
+  notes?: string;
+  externalBookingId?: string;
+}): Promise<any> => {
+  try {
+    const response = await posV2Client.post('/api/v1/consumer/reservations', reservationData);
+    return response.data?.data || null;
+  } catch (error) {
+    logger.error('Consumer API: Failed to create reservation', { error });
+    throw error;
+  }
+};
+
+/**
+ * Create bill split via Consumer API
+ * POS V2 Endpoint: POST /api/v1/consumer/orders/:orderId/split
+ */
+export const createBillSplitViaConsumerApi = async (
+  orderId: string,
+  splitData: {
+    splitType: 'equal' | 'by_items' | 'by_amount' | 'percentage';
+    participants: { name: string; phone?: string; email?: string }[];
+    itemAssignments?: any[];
+    amounts?: number[];
+    percentages?: number[];
+    externalSplitId?: string;
+  }
+): Promise<any> => {
+  try {
+    const response = await posV2Client.post(`/api/v1/consumer/orders/${orderId}/split`, splitData);
+    return response.data?.data || null;
+  } catch (error) {
+    logger.error('Consumer API: Failed to create bill split', { orderId, error });
+    throw error;
+  }
+};
+
+/**
+ * Get bill split via Consumer API
+ * POS V2 Endpoint: GET /api/v1/consumer/split/:sessionCode
+ */
+export const getBillSplitViaConsumerApi = async (sessionCode: string): Promise<any> => {
+  try {
+    const response = await posV2Client.get(`/api/v1/consumer/split/${sessionCode}`);
+    return response.data?.data || null;
+  } catch (error) {
+    logger.error('Consumer API: Failed to get bill split', { sessionCode, error });
+    throw error;
+  }
+};
+
+/**
+ * Join bill split via Consumer API
+ * POS V2 Endpoint: POST /api/v1/consumer/split/:sessionCode/join
+ */
+export const joinBillSplitViaConsumerApi = async (
+  sessionCode: string,
+  participant: { name: string; phone?: string; email?: string; consumerId?: string }
+): Promise<any> => {
+  try {
+    const response = await posV2Client.post(`/api/v1/consumer/split/${sessionCode}/join`, participant);
+    return response.data?.data || null;
+  } catch (error) {
+    logger.error('Consumer API: Failed to join bill split', { sessionCode, error });
+    throw error;
+  }
+};
+
+// ============================================================================
+// CONFIGURATION CHECK
+// ============================================================================
+
+/**
+ * Check if POS V2 service is properly configured with API key
+ */
+const isConfigured = (): boolean => hasApiKey;
+
+// ============================================================================
 // EXPORT
 // ============================================================================
 
 export default {
+  isConfigured,
   getRestaurants,
   getRestaurantById,
   createOrder,
@@ -453,6 +667,16 @@ export default {
   createReservation,
   cancelReservation,
   verifyRestaurantLinkCode,
+  // Consumer API endpoints
+  getRestaurantsViaConsumerApi,
+  getRestaurantViaConsumerApi,
+  getMenuViaConsumerApi,
+  getTableAvailabilityViaConsumerApi,
+  createOrderViaConsumerApi,
+  createReservationViaConsumerApi,
+  createBillSplitViaConsumerApi,
+  getBillSplitViaConsumerApi,
+  joinBillSplitViaConsumerApi,
 };
 
 

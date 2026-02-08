@@ -132,7 +132,7 @@ export const createReview = async (
     });
 
     // Award loyalty points
-    await awardReviewPoints(userId, review._id as string, input.storeName || 'store');
+    await awardReviewPoints(userId, review._id.toString(), input.storeName || 'store');
 
     logger.info('Review created', {
       reviewId: review._id,
@@ -182,7 +182,7 @@ export const getStoreReviews = async (
     ]);
 
     return {
-      reviews: reviews as IReview[],
+      reviews: reviews as unknown as IReview[],
       reviewRating: stats,
       pagination: {
         total: stats.totalReviews,
@@ -218,7 +218,7 @@ export const getUserReviews = async (
     ]);
 
     return {
-      reviews: reviews as IReview[],
+      reviews: reviews as unknown as IReview[],
       pagination: {
         total,
         totalPages: Math.ceil(total / limit),
@@ -243,7 +243,7 @@ export const getReviewById = async (reviewId: string): Promise<IReview> => {
       throw new NotFoundError('Review', reviewId);
     }
 
-    return review as IReview;
+    return review as unknown as IReview;
   } catch (error) {
     logger.error('Failed to get review', { reviewId, error });
     throw error;

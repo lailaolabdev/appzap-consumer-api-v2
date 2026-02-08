@@ -12,7 +12,7 @@
 
 import { posV1Service, PosV1Store, PosV1Menu, PosV1Bill, CreateBillPayload } from './posV1Api.service';
 import * as posV2Service from './posV2Api.service';
-import { logger } from '../utils/logger';
+import logger from '../utils/logger';
 
 // ============================================================================
 // UNIFIED TYPES
@@ -217,19 +217,30 @@ class UnifiedRestaurantService {
     try {
       const { skip = 0, limit = 20 } = params;
       
-      // Fetch from both POS systems in parallel
+      // Fetch from both POS systems in parallel using Consumer API endpoints
+      // These use API key authentication
+      logger.info('[UnifiedRestaurant] Fetching from POS V1 and V2...');
+      
       const [v1Result, v2Result] = await Promise.allSettled([
-        posV1Service.getStores({ 
-          skip: 0, 
+        posV1Service.getStoresViaConsumerApi({ 
           limit: 500,  // Get all from V1
           search: params.search,
         }),
-        posV2Service.getRestaurants({ 
-          skip: 0, 
+        posV2Service.getRestaurantsViaConsumerApi({ 
           limit: 500,  // Get all from V2
           search: params.search,
         }),
       ]);
+      
+      logger.info('[UnifiedRestaurant] V1 Result:', { 
+        status: v1Result.status, 
+        dataCount: v1Result.status === 'fulfilled' ? v1Result.value?.data?.length : 0,
+        error: v1Result.status === 'rejected' ? String((v1Result.reason as any)?.message) : undefined
+      });
+      logger.info('[UnifiedRestaurant] V2 Result:', { 
+        status: v2Result.status, 
+        dataCount: v2Result.status === 'fulfilled' ? v2Result.value?.data?.length : 0
+      });
 
       // Extract data, handle failures gracefully
       const v1Restaurants: UnifiedRestaurant[] = v1Result.status === 'fulfilled'
@@ -557,10 +568,12 @@ class UnifiedRestaurantService {
   // ==========================================================================
 
   private transformV1Restaurant(store: PosV1Store): UnifiedRestaurant {
+    // Consumer API returns 'id', internal API returns '_id'
+    const storeId = (store as any).id || store._id;
     return {
-      _id: `v1_${store._id}`,
+      _id: `v1_${storeId}`,
       posVersion: 'v1',
-      posRestaurantId: store._id,
+      posRestaurantId: storeId,
       
       name: store.name,
       nameEn: store.nameEn,
@@ -679,10 +692,12 @@ class UnifiedRestaurantService {
   // ==========================================================================
 
   private transformV2Restaurant(restaurant: any): UnifiedRestaurant {
+    // Consumer API returns 'id', internal API returns '_id'
+    const restaurantId = restaurant.id || restaurant._id;
     return {
-      _id: `v2_${restaurant._id}`,
+      _id: `v2_${restaurantId}`,
       posVersion: 'v2',
-      posRestaurantId: restaurant._id,
+      posRestaurantId: restaurantId,
       
       name: restaurant.name,
       nameEn: restaurant.nameEn,

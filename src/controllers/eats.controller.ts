@@ -50,7 +50,8 @@ export const getRestaurants = async (req: Request, res: Response): Promise<void>
       limit: limitNum,
       search: search as string,
       cuisine: cuisine as string,
-      isReservable: isReservable === 'true',
+      // Only filter by reservable if explicitly specified in query
+      isReservable: isReservable !== undefined ? isReservable === 'true' : undefined,
     });
 
     let restaurants = result.data;

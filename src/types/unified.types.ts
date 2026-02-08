@@ -256,6 +256,10 @@ export interface UnifiedMenuItem {
   isActive: boolean;
   isShowOnApp: boolean;
   
+  // Timestamps
+  createdAt?: Date;
+  updatedAt?: Date;
+  
   // Original POS data
   _posData?: any;
 }

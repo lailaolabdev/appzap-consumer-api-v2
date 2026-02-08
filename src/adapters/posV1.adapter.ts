@@ -24,6 +24,7 @@ import {
   UnifiedOrderItem,
   UnifiedTable,
   UnifiedReservation,
+  UnifiedReservationStatus,
   UnifiedBill,
   TimeSlot,
   CreateOrderInput,
@@ -75,7 +76,7 @@ const UNIFIED_TO_V1_STATUS_MAP: Record<UnifiedOrderStatus, string> = {
 };
 
 // POS V1 Reservation status → Unified Reservation status
-const V1_RESERVATION_STATUS_MAP: Record<string, string> = {
+const V1_RESERVATION_STATUS_MAP: Record<string, UnifiedReservationStatus> = {
   'WAITING': 'pending',
   'WATTING': 'pending',  // Typo in V1
   'STAFF_CONFIRM': 'confirmed',

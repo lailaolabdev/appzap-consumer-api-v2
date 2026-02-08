@@ -67,49 +67,91 @@ const startServer = async (): Promise<void> => {
     // GRACEFUL SHUTDOWN
     // ============================================================================
 
+    let isShuttingDown = false;
+
     const gracefulShutdown = async (signal: string) => {
+      // Prevent multiple shutdown attempts
+      if (isShuttingDown) {
+        return;
+      }
+      isShuttingDown = true;
+
       logger.info(`${signal} received, starting graceful shutdown...`);
 
-      // Close HTTP server (stop accepting new requests)
-      server.close(async () => {
-        logger.info('HTTP server closed');
-
-        // Close Socket.io
-        io.close(() => {
-          logger.info('Socket.io server closed');
-        });
-
-        // Close Bull queues
-        await closeQueues();
-
-        // Close Redis connections
-        await disconnectRedis();
-
-        // Close database connections (handled in config files)
-        logger.info('Graceful shutdown completed');
-        process.exit(0);
-      });
-
       // Force shutdown after 30 seconds
-      setTimeout(() => {
+      const forceShutdownTimeout = setTimeout(() => {
         logger.error('Forced shutdown after timeout');
         process.exit(1);
       }, 30000);
+
+      try {
+        // Close HTTP server (stop accepting new requests)
+        await new Promise<void>((resolve) => {
+          server.close((err) => {
+            if (err) {
+              logger.warn('HTTP server close error (may already be closed)', { error: err.message });
+            } else {
+              logger.info('HTTP server closed');
+            }
+            resolve();
+          });
+        });
+
+        // Close Socket.io
+        try {
+          io.close();
+          logger.info('Socket.io server closed');
+        } catch (ioError: any) {
+          logger.warn('Socket.io close error', { error: ioError.message });
+        }
+
+        // Close Bull queues
+        try {
+          await closeQueues();
+        } catch (queueError: any) {
+          logger.warn('Queue close error', { error: queueError.message });
+        }
+
+        // Close Redis connections
+        try {
+          await disconnectRedis();
+        } catch (redisError: any) {
+          logger.warn('Redis disconnect error', { error: redisError.message });
+        }
+
+        clearTimeout(forceShutdownTimeout);
+        logger.info('Graceful shutdown completed');
+        process.exit(0);
+      } catch (error: any) {
+        clearTimeout(forceShutdownTimeout);
+        logger.error('Error during shutdown', { error: error.message });
+        process.exit(1);
+      }
     };
 
     // Handle shutdown signals
     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-    // Handle uncaught errors
+    // Handle uncaught errors - log but don't shutdown for every rejection
     process.on('uncaughtException', (error) => {
       logger.error('Uncaught exception', { error: error.message, stack: error.stack });
-      gracefulShutdown('uncaughtException');
+      if (!isShuttingDown) {
+        gracefulShutdown('uncaughtException');
+      }
     });
 
-    process.on('unhandledRejection', (reason, promise) => {
+    process.on('unhandledRejection', (reason: any, promise) => {
+      // Don't trigger shutdown for ERR_SERVER_NOT_RUNNING as it's usually from shutdown itself
+      if (reason?.code === 'ERR_SERVER_NOT_RUNNING') {
+        logger.warn('Unhandled rejection during shutdown (expected)', { code: reason.code });
+        return;
+      }
       logger.error('Unhandled rejection', { reason, promise });
-      gracefulShutdown('unhandledRejection');
+      // Only shutdown for critical unhandled rejections, not during shutdown
+      if (!isShuttingDown) {
+        gracefulShutdown('unhandledRejection');
+      }
     });
   } catch (error) {
     logger.error('Failed to start server', { error });

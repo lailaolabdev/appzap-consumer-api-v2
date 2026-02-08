@@ -121,9 +121,9 @@ export const createSplitSession = async (
 
     // Calculate bill amounts
     const subtotal = items.reduce((sum, item) => sum + item.totalPrice, 0);
-    const tax = order.tax || 0;
-    const serviceCharge = order.serviceCharge || 0;
-    const discount = order.discount || 0;
+    const tax = order.pricing?.tax || 0;
+    const serviceCharge = order.pricing?.serviceCharge || 0;
+    const discount = order.pricing?.discount || 0;
     const totalAmount = subtotal + tax + serviceCharge - discount;
 
     // Create session
@@ -133,7 +133,7 @@ export const createSplitSession = async (
       posOrderId,
       restaurantId: order.restaurantId,
       restaurantName: order.restaurantName || 'Restaurant',
-      tableNumber: order.tableNumber,
+      tableNumber: order.table?.name,
       
       subtotal,
       tax,

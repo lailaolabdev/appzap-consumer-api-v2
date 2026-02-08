@@ -15,7 +15,7 @@
 
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import { env } from '../config/env';
-import { logger } from '../utils/logger';
+import logger from '../utils/logger';
 
 // ============================================================================
 // TYPES
@@ -173,17 +173,30 @@ export interface CreateBillPayload {
 class PosV1ApiService {
   private client: AxiosInstance;
   private baseUrl: string;
+  private hasApiKey: boolean;
 
   constructor() {
     this.baseUrl = env.external.posV1ApiUrl || 'http://localhost:7070';
+    this.hasApiKey = !!(env.external.posV1ApiKey && env.external.posV1ApiKey.startsWith('appzap_pos_'));
+    
+    // Log configuration status
+    logger.info(`[POS V1] Initializing service:`, {
+      baseUrl: this.baseUrl,
+      hasApiKey: this.hasApiKey,
+    });
+    
+    if (!this.hasApiKey) {
+      logger.warn('[POS V1] ⚠️  No API key configured! Consumer API routes on POS V1 will require authentication.');
+      logger.warn('[POS V1] To generate a key, run: node scripts/generateConsumerApiKey.js in appzap-app-api/api');
+    }
     
     this.client = axios.create({
       baseURL: this.baseUrl,
       timeout: 30000,
       headers: {
         'Content-Type': 'application/json',
-        // POS V1 uses API key in header for some endpoints
-        ...(env.external.posV1ApiKey && { 'x-api-key': env.external.posV1ApiKey }),
+        // POS V1 uses X-API-Key header for consumer API endpoints
+        ...(this.hasApiKey && { 'X-API-Key': env.external.posV1ApiKey }),
       },
     });
 
@@ -192,6 +205,7 @@ class PosV1ApiService {
       (config) => {
         logger.debug(`[POS V1] ${config.method?.toUpperCase()} ${config.url}`, {
           params: config.params,
+          hasApiKey: this.hasApiKey,
         });
         return config;
       },
@@ -210,6 +224,10 @@ class PosV1ApiService {
         return response;
       },
       (error: AxiosError) => {
+        // Provide better error messages for common issues
+        if (error.response?.status === 401) {
+          logger.error('[POS V1] Authentication failed. Check if POS_V1_API_KEY is configured correctly.');
+        }
         logger.error('[POS V1] Response error:', {
           url: error.config?.url,
           status: error.response?.status,
@@ -218,6 +236,13 @@ class PosV1ApiService {
         return Promise.reject(error);
       }
     );
+  }
+  
+  /**
+   * Check if service is properly configured with API key
+   */
+  isConfigured(): boolean {
+    return this.hasApiKey;
   }
 
   // ==========================================================================
@@ -658,6 +683,181 @@ class PosV1ApiService {
     } catch (error) {
       logger.error('[POS V1] Health check failed:', error);
       return false;
+    }
+  }
+
+  // ==========================================================================
+  // CONSUMER API ENDPOINTS (New endpoints with API key auth)
+  // ==========================================================================
+
+  /**
+   * Get stores via Consumer API
+   * POS V1 Endpoint: GET /v5/consumer/stores
+   */
+  async getStoresViaConsumerApi(params: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    lat?: number;
+    lng?: number;
+  } = {}): Promise<{ data: PosV1Store[]; total: number }> {
+    try {
+      const response = await this.client.get('/v5/consumer/stores', { params });
+      const result = response.data?.data || [];
+      return {
+        data: Array.isArray(result) ? result : [],
+        total: response.data?.pagination?.total || result.length,
+      };
+    } catch (error) {
+      logger.error('[POS V1] Consumer API: Failed to get stores:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get store details via Consumer API
+   * POS V1 Endpoint: GET /v5/consumer/stores/:id
+   */
+  async getStoreViaConsumerApi(storeId: string): Promise<PosV1Store | null> {
+    try {
+      const response = await this.client.get(`/v5/consumer/stores/${storeId}`);
+      return response.data?.data || null;
+    } catch (error) {
+      logger.error(`[POS V1] Consumer API: Failed to get store ${storeId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get menu via Consumer API
+   * POS V1 Endpoint: GET /v5/consumer/stores/:id/menu
+   */
+  async getMenuViaConsumerApi(storeId: string): Promise<any> {
+    try {
+      const response = await this.client.get(`/v5/consumer/stores/${storeId}/menu`);
+      return response.data?.data || null;
+    } catch (error) {
+      logger.error(`[POS V1] Consumer API: Failed to get menu for ${storeId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get table availability via Consumer API
+   * POS V1 Endpoint: GET /v5/consumer/tables/availability/:id
+   */
+  async getTableAvailability(storeId: string, params: {
+    date: string;
+    time?: string;
+    guests: number;
+    duration?: number;
+  }): Promise<any> {
+    try {
+      const response = await this.client.get(`/v5/consumer/tables/availability/${storeId}`, { params });
+      return response.data?.data || null;
+    } catch (error) {
+      logger.error(`[POS V1] Consumer API: Failed to get table availability:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create order via Consumer API
+   * POS V1 Endpoint: POST /v5/consumer/orders
+   */
+  async createOrderViaConsumerApi(orderData: {
+    storeId: string;
+    tableId?: string;
+    items: any[];
+    customerInfo?: { name?: string; phone?: string; email?: string };
+    orderType?: string;
+    notes?: string;
+    externalOrderId?: string;
+  }): Promise<any> {
+    try {
+      const response = await this.client.post('/v5/consumer/orders', orderData);
+      return response.data?.data || null;
+    } catch (error) {
+      logger.error('[POS V1] Consumer API: Failed to create order:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create reservation via Consumer API
+   * POS V1 Endpoint: POST /v5/consumer/reservations
+   */
+  async createReservationViaConsumerApi(reservationData: {
+    storeId: string;
+    date: string;
+    time: string;
+    guests: number;
+    customerInfo?: { name?: string; phone?: string };
+    notes?: string;
+    externalBookingId?: string;
+  }): Promise<any> {
+    try {
+      const response = await this.client.post('/v5/consumer/reservations', reservationData);
+      return response.data?.data || null;
+    } catch (error) {
+      logger.error('[POS V1] Consumer API: Failed to create reservation:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create bill split via Consumer API
+   * POS V1 Endpoint: POST /v5/consumer/split
+   */
+  async createBillSplit(splitData: {
+    billId: string;
+    storeId: string;
+    splitType: 'equal' | 'by_items' | 'by_amount' | 'percentage';
+    participants: { name: string; phone?: string; email?: string }[];
+    itemAssignments?: any[];
+    amounts?: number[];
+    percentages?: number[];
+    externalSplitId?: string;
+  }): Promise<any> {
+    try {
+      const response = await this.client.post('/v5/consumer/split', splitData);
+      return response.data?.data || null;
+    } catch (error) {
+      logger.error('[POS V1] Consumer API: Failed to create bill split:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get bill split via Consumer API
+   * POS V1 Endpoint: GET /v5/consumer/split/:sessionCode
+   */
+  async getBillSplit(sessionCode: string): Promise<any> {
+    try {
+      const response = await this.client.get(`/v5/consumer/split/${sessionCode}`);
+      return response.data?.data || null;
+    } catch (error) {
+      logger.error(`[POS V1] Consumer API: Failed to get bill split ${sessionCode}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Join bill split via Consumer API
+   * POS V1 Endpoint: POST /v5/consumer/split/:sessionCode/join
+   */
+  async joinBillSplit(sessionCode: string, participant: {
+    name: string;
+    phone?: string;
+    email?: string;
+    consumerId?: string;
+  }): Promise<any> {
+    try {
+      const response = await this.client.post(`/v5/consumer/split/${sessionCode}/join`, participant);
+      return response.data?.data || null;
+    } catch (error) {
+      logger.error(`[POS V1] Consumer API: Failed to join bill split:`, error);
+      throw error;
     }
   }
 }

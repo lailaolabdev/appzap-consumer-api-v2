@@ -123,6 +123,9 @@ export interface IBillSplit extends Document {
   expiresAt: Date;
   completedAt?: Date;
   
+  // Virtuals
+  isExpired: boolean;
+  
   // Methods
   addParticipant(userId: mongoose.Types.ObjectId, name: string, phone?: string): Promise<IBillSplit>;
   removeParticipant(userId: mongoose.Types.ObjectId): Promise<IBillSplit>;

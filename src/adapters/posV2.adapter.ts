@@ -24,6 +24,7 @@ import {
   UnifiedOrderItem,
   UnifiedTable,
   UnifiedReservation,
+  UnifiedReservationStatus,
   UnifiedBill,
   TimeSlot,
   CreateOrderInput,
@@ -80,7 +81,7 @@ const UNIFIED_TO_V2_STATUS_MAP: Record<UnifiedOrderStatus, string> = {
 };
 
 // POS V2 Reservation status → Unified Reservation status
-const V2_RESERVATION_STATUS_MAP: Record<string, string> = {
+const V2_RESERVATION_STATUS_MAP: Record<string, UnifiedReservationStatus> = {
   'pending': 'pending',
   'confirmed': 'confirmed',
   'seated': 'seated',
@@ -921,7 +922,7 @@ export class POSV2Adapter implements IPOSAdapter {
       customerName: input.customerName,
       customerPhone: input.customerPhone,
       customerEmail: input.customerEmail,
-      status: V2_RESERVATION_STATUS_MAP[posReservation.status] || 'pending',
+      status: V2_RESERVATION_STATUS_MAP[posReservation.status] || 'pending' as UnifiedReservationStatus,
       specialRequests: input.specialRequests,
       source: 'app',
       createdAt: posReservation.createdAt ? new Date(posReservation.createdAt) : now,
@@ -951,7 +952,7 @@ export class POSV2Adapter implements IPOSAdapter {
       customerName: reservation.customerName,
       customerPhone: reservation.customerPhone,
       customerEmail: reservation.customerEmail,
-      status: V2_RESERVATION_STATUS_MAP[reservation.status] || 'pending',
+      status: V2_RESERVATION_STATUS_MAP[reservation.status] || 'pending' as UnifiedReservationStatus,
       deposit: reservation.deposit
         ? {
             required: reservation.deposit.required,

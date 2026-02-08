@@ -138,7 +138,7 @@ const config: Config = {
     apiKey: process.env.POS_V1_API_KEY,
   },
   posV2Api: {
-    url: process.env.POS_V2_API_URL || 'http://localhost:8080',
+    url: process.env.POS_V2_API_URL || 'http://localhost:80',
     apiKey: process.env.POS_V2_API_KEY,
   },
   supplierApi: {
@@ -151,7 +151,7 @@ const config: Config = {
     authApiUrl: process.env.AUTH_API_URL || 'https://auth.lailaolab.com',
     posV1ApiUrl: process.env.POS_V1_API_URL || 'http://localhost:7070',
     posV1ApiKey: process.env.POS_V1_API_KEY,
-    posV2ApiUrl: process.env.POS_V2_API_URL || 'http://localhost:8080',
+    posV2ApiUrl: process.env.POS_V2_API_URL || 'http://localhost:80',
     posV2ApiKey: process.env.POS_V2_API_KEY,
     supplierApiUrl: process.env.SUPPLIER_API_URL || '',
     supplierExchangeKey: process.env.SUPPLIER_EXCHANGE_KEY || '',
