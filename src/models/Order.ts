@@ -32,6 +32,14 @@ export interface ISplitDetail {
   paidAt?: Date;
 }
 
+export interface IOrderScheduling {
+  type: 'asap' | 'scheduled';
+  pickupTime?: Date;
+  estimatedReadyTime?: Date;
+  reminderSent?: boolean;
+  confirmedAt?: Date;
+}
+
 export interface IOrder extends Document {
   orderCode: string;
   userId: mongoose.Types.ObjectId;
@@ -39,6 +47,9 @@ export interface IOrder extends Document {
   // Order Details
   orderType: 'dine_in' | 'takeaway' | 'subscription';
   productType: 'eats' | 'live';
+  
+  // Order Ahead Scheduling
+  scheduling?: IOrderScheduling;
   
   // Restaurant
   restaurantId: string;
@@ -150,6 +161,21 @@ const SplitDetailSchema = new Schema<ISplitDetail>(
   { _id: true }
 );
 
+const OrderSchedulingSchema = new Schema<IOrderScheduling>(
+  {
+    type: {
+      type: String,
+      enum: ['asap', 'scheduled'],
+      default: 'asap',
+    },
+    pickupTime: { type: Date },
+    estimatedReadyTime: { type: Date },
+    reminderSent: { type: Boolean, default: false },
+    confirmedAt: { type: Date },
+  },
+  { _id: false }
+);
+
 // Main Order Schema
 const OrderSchema = new Schema<IOrder>(
   {
@@ -177,6 +203,12 @@ const OrderSchema = new Schema<IOrder>(
       type: String,
       enum: ['eats', 'live'],
       default: 'eats',
+    },
+    
+    // Order Ahead Scheduling
+    scheduling: {
+      type: OrderSchedulingSchema,
+      default: () => ({ type: 'asap' }),
     },
     
     // Restaurant
@@ -339,6 +371,9 @@ OrderSchema.index({ paymentStatus: 1, createdAt: -1 });
 OrderSchema.index({ restaurantId: 1, status: 1 });
 OrderSchema.index({ orderCode: 1 }, { unique: true });
 OrderSchema.index({ posSyncStatus: 1 });
+// Order Ahead indexes
+OrderSchema.index({ 'scheduling.type': 1, 'scheduling.pickupTime': 1 });
+OrderSchema.index({ 'scheduling.pickupTime': 1, status: 1 });
 
 // Methods
 OrderSchema.methods.markAsPaid = async function (paymentId: string): Promise<IOrder> {

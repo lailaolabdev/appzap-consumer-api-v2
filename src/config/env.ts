@@ -38,6 +38,10 @@ interface Config {
   authApi: {
     url: string;
   };
+  posV1Api: {
+    url: string;
+    apiKey?: string;
+  };
   posV2Api: {
     url: string;
     apiKey?: string;
@@ -45,6 +49,17 @@ interface Config {
   supplierApi: {
     url: string;
     exchangeKey: string;
+  };
+  
+  // External API shortcuts
+  external: {
+    authApiUrl: string;
+    posV1ApiUrl: string;
+    posV1ApiKey?: string;
+    posV2ApiUrl: string;
+    posV2ApiKey?: string;
+    supplierApiUrl: string;
+    supplierExchangeKey: string;
   };
 
   // Payment
@@ -118,6 +133,10 @@ const config: Config = {
   authApi: {
     url: process.env.AUTH_API_URL || 'https://auth.lailaolab.com',
   },
+  posV1Api: {
+    url: process.env.POS_V1_API_URL || 'http://localhost:7070',
+    apiKey: process.env.POS_V1_API_KEY,
+  },
   posV2Api: {
     url: process.env.POS_V2_API_URL || 'http://localhost:8080',
     apiKey: process.env.POS_V2_API_KEY,
@@ -125,6 +144,17 @@ const config: Config = {
   supplierApi: {
     url: process.env.SUPPLIER_API_URL || '',
     exchangeKey: process.env.SUPPLIER_EXCHANGE_KEY || '',
+  },
+  
+  // External API shortcuts (for easier access)
+  external: {
+    authApiUrl: process.env.AUTH_API_URL || 'https://auth.lailaolab.com',
+    posV1ApiUrl: process.env.POS_V1_API_URL || 'http://localhost:7070',
+    posV1ApiKey: process.env.POS_V1_API_KEY,
+    posV2ApiUrl: process.env.POS_V2_API_URL || 'http://localhost:8080',
+    posV2ApiKey: process.env.POS_V2_API_KEY,
+    supplierApiUrl: process.env.SUPPLIER_API_URL || '',
+    supplierExchangeKey: process.env.SUPPLIER_EXCHANGE_KEY || '',
   },
 
   // Payment
@@ -188,4 +218,4 @@ const validateConfig = (): void => {
 validateConfig();
 
 export default config;
-
+export { config as env };

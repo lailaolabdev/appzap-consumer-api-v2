@@ -32,7 +32,7 @@ const LoyaltyTransactionSchema = new Schema<ILoyaltyTransaction>(
     },
     source: {
       type: String,
-      enum: ['order', 'referral', 'welcome_bonus', 'admin', 'expiry', 'redemption'],
+      enum: ['order', 'referral', 'welcome_bonus', 'admin', 'expiry', 'redemption', 'review', 'gift_received', 'gift_purchase'],
       required: true,
     },
     sourceId: {

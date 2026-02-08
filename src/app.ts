@@ -19,7 +19,12 @@ import identityRoutes from './routes/identity.routes';
 import deepLinkRoutes from './routes/deepLink.routes';
 import notificationRoutes from './routes/notification.routes';
 import liveRoutes from './routes/live.routes';
+import reviewRoutes from './routes/review.routes';
+import loyaltyRoutes from './routes/loyalty.routes';
+import giftRoutes from './routes/gift.routes';
+import billSplitRoutes from './routes/billSplit.routes';
 import * as deepLinkController from './controllers/deepLink.controller';
+import * as giftController from './controllers/gift.controller';
 
 /**
  * Create Express Application
@@ -106,6 +111,39 @@ const createApp = (): Application => {
 
   // Deep link redirect (no prefix - for web users)
   app.get('/links/:shortCode', deepLinkController.handleDeepLinkRedirect);
+  
+  // Gift deep link redirect
+  app.get('/gift/:shortCode', (req, res) => {
+    // Redirect to app with gift code
+    const { shortCode } = req.params;
+    const appUrl = `appzap://gift/${shortCode}`;
+    
+    // If mobile, try to open app; otherwise show gift info
+    const userAgent = req.get('User-Agent') || '';
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(userAgent);
+    
+    if (isMobile) {
+      res.redirect(appUrl);
+    } else {
+      res.redirect(`/api/v1/gifts/code/${shortCode}`);
+    }
+  });
+  
+  // Bill split deep link redirect
+  app.get('/split/:sessionCode', (req, res) => {
+    const { sessionCode } = req.params;
+    const appUrl = `appzap://split/${sessionCode}`;
+    
+    // If mobile, try to open app; otherwise show session info
+    const userAgent = req.get('User-Agent') || '';
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(userAgent);
+    
+    if (isMobile) {
+      res.redirect(appUrl);
+    } else {
+      res.redirect(`/api/v1/bill-split/code/${sessionCode}`);
+    }
+  });
 
   // API routes (api/v1 prefix)
   app.use('/api/v1/auth', authRoutes);
@@ -117,6 +155,10 @@ const createApp = (): Application => {
   app.use('/api/v1/deep-links', deepLinkRoutes);
   app.use('/api/v1/notifications', notificationRoutes);
   app.use('/api/v1/live', liveRoutes);
+  app.use('/api/v1/reviews', reviewRoutes);
+  app.use('/api/v1/loyalty', loyaltyRoutes);
+  app.use('/api/v1/gifts', giftRoutes);
+  app.use('/api/v1/bill-split', billSplitRoutes);
 
   // Root endpoint
   app.get('/', (req: Request, res: Response) => {
@@ -131,8 +173,13 @@ const createApp = (): Application => {
         healthDetailed: '/health/detailed',
         auth: '/api/v1/auth',
         eats: '/api/v1/eats',
+        bookings: '/api/v1/eats/bookings',
         live: '/api/v1/live',
         market: '/api/v1/market',
+        reviews: '/api/v1/reviews',
+        loyalty: '/api/v1/loyalty',
+        gifts: '/api/v1/gifts',
+        billSplit: '/api/v1/bill-split',
         docs: 'See documentation at /docs',
       },
     });

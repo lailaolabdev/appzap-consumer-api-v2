@@ -36,6 +36,14 @@ router.get('/', authenticate, bookingController.getUserReservations);
 router.get('/:reservationId', authenticate, bookingController.getReservationById);
 
 /**
+ * @route   PUT /api/v1/eats/bookings/:reservationId
+ * @desc    Update reservation
+ * @access  Private
+ * @body    date?, time?, guests?, specialRequests?
+ */
+router.put('/:reservationId', authenticate, bookingController.updateReservation);
+
+/**
  * @route   DELETE /api/v1/eats/bookings/:reservationId
  * @desc    Cancel reservation
  * @access  Private
