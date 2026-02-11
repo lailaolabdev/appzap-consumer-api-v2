@@ -23,6 +23,10 @@ import reviewRoutes from './routes/review.routes';
 import loyaltyRoutes from './routes/loyalty.routes';
 import giftRoutes from './routes/gift.routes';
 import billSplitRoutes from './routes/billSplit.routes';
+import promotionRoutes from './routes/promotion.routes';
+import couponRoutes from './routes/coupon.routes';
+import analyticsRoutes from './routes/analytics.routes';
+import restaurantRoutes from './routes/restaurant.routes';
 import * as deepLinkController from './controllers/deepLink.controller';
 import * as giftController from './controllers/gift.controller';
 
@@ -159,6 +163,10 @@ const createApp = (): Application => {
   app.use('/api/v1/loyalty', loyaltyRoutes);
   app.use('/api/v1/gifts', giftRoutes);
   app.use('/api/v1/bill-split', billSplitRoutes);
+  app.use('/api/v1/promotions', promotionRoutes);
+  app.use('/api/v1/coupons', couponRoutes);
+  app.use('/api/v1/analytics', analyticsRoutes);
+  app.use('/api/v1/restaurants', restaurantRoutes);
 
   // Root endpoint
   app.get('/', (req: Request, res: Response) => {
@@ -180,6 +188,10 @@ const createApp = (): Application => {
         loyalty: '/api/v1/loyalty',
         gifts: '/api/v1/gifts',
         billSplit: '/api/v1/bill-split',
+        promotions: '/api/v1/promotions',
+        coupons: '/api/v1/coupons',
+        analytics: '/api/v1/analytics',
+        restaurants: '/api/v1/restaurants',
         docs: 'See documentation at /docs',
       },
     });
