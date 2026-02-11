@@ -27,9 +27,31 @@ export interface ILoyaltyPoints {
 
 export interface IPreferences {
   defaultMode: 'eats' | 'live';
-  language: 'lo' | 'en';
+  language: 'lo' | 'en' | 'th' | 'zh' | 'ko' | 'ja';
   notifications: boolean;
   dietaryPreferences: string[];
+}
+
+/**
+ * International Phone Info
+ * For supporting foreigners with non-Lao phone numbers
+ */
+export interface IPhoneInfo {
+  countryCode: string;      // ISO 3166-1 alpha-2: 'LA', 'US', 'TH', 'KR', etc.
+  countryDialCode: string;  // '+856', '+1', '+66', '+82', etc.
+  isInternational: boolean; // true if not Lao number
+  verifiedAt?: Date;
+}
+
+/**
+ * Profile Completeness Tracking
+ * For progressive profiling
+ */
+export interface IProfileCompleteness {
+  percentage: number;           // 0-100
+  missingFields: string[];      // ['dateOfBirth', 'nationality']
+  lastPromptedAt?: Date;        // When we last asked user to complete
+  completedAt?: Date;           // When profile reached 100%
 }
 
 export interface IPushToken {
@@ -60,14 +82,26 @@ export interface IV1Integration {
 export interface IUser extends Document {
   phone: string;
   fullName?: string;
+  nickname?: string;
   email?: string;
   image?: string;
   dateOfBirth?: Date;
-  gender?: 'male' | 'female' | 'other';
+  gender?: 'male' | 'female' | 'other' | 'prefer_not_to_say';
+  
+  // International Support (Phase A1)
+  phoneInfo: IPhoneInfo;
+  nationality?: string;         // ISO 3166-1 alpha-2: 'LA', 'US', 'TH', etc.
+  passportNumber?: string;      // For hotel bookings (encrypted)
+  
+  // Progressive Profile (Phase A2)
+  profileCompleteness: IProfileCompleteness;
+  registrationSource?: 'app' | 'web' | 'qr_scan' | 'referral';
+  referredBy?: string;          // User ID who referred
 
   // Authentication
   authProviderId?: string; // From Auth API
   lastLogin?: Date;
+  loginCount: number;
 
   // Roles & Profiles
   roles: string[];
@@ -109,6 +143,9 @@ export interface IUser extends Document {
   canAccessMerchantProfile(): boolean;
   addMerchantProfile(profile: IMerchantProfile): Promise<IUser>;
   switchProfile(profileType: 'personal' | 'merchant'): Promise<IUser>;
+  calculateProfileCompleteness(): IProfileCompleteness;
+  getRequiredFieldsForAction(action: string): string[];
+  isForeigner(): boolean;
 }
 
 // Schemas
@@ -152,9 +189,35 @@ const LoyaltyPointsSchema = new Schema<ILoyaltyPoints>(
 const PreferencesSchema = new Schema<IPreferences>(
   {
     defaultMode: { type: String, enum: ['eats', 'live'], default: 'eats' },
-    language: { type: String, enum: ['lo', 'en'], default: 'lo' },
+    language: { type: String, enum: ['lo', 'en', 'th', 'zh', 'ko', 'ja'], default: 'en' },
     notifications: { type: Boolean, default: true },
     dietaryPreferences: [{ type: String }],
+  },
+  { _id: false }
+);
+
+/**
+ * Phone Info Schema - International phone support
+ */
+const PhoneInfoSchema = new Schema<IPhoneInfo>(
+  {
+    countryCode: { type: String, required: true, default: 'LA', uppercase: true },
+    countryDialCode: { type: String, required: true, default: '+856' },
+    isInternational: { type: Boolean, default: false },
+    verifiedAt: { type: Date },
+  },
+  { _id: false }
+);
+
+/**
+ * Profile Completeness Schema - Progressive profiling
+ */
+const ProfileCompletenessSchema = new Schema<IProfileCompleteness>(
+  {
+    percentage: { type: Number, default: 20, min: 0, max: 100 },
+    missingFields: [{ type: String }],
+    lastPromptedAt: { type: Date },
+    completedAt: { type: Date },
   },
   { _id: false }
 );
@@ -197,9 +260,11 @@ const UserSchema = new Schema<IUser>(
       required: [true, 'Phone number is required'],
       unique: true,
       trim: true,
-      match: [/^856\d{8,10}$/, 'Invalid Lao phone number format'],
+      // Updated to support international phone numbers (E.164 format)
+      match: [/^\+?[1-9]\d{6,14}$/, 'Invalid phone number format'],
     },
     fullName: { type: String, trim: true, maxlength: 200 },
+    nickname: { type: String, trim: true, maxlength: 50 },
     email: {
       type: String,
       trim: true,
@@ -208,11 +273,32 @@ const UserSchema = new Schema<IUser>(
     },
     image: { type: String, trim: true },
     dateOfBirth: { type: Date },
-    gender: { type: String, enum: ['male', 'female', 'other'] },
+    gender: { type: String, enum: ['male', 'female', 'other', 'prefer_not_to_say'] },
+
+    // International Support (Phase A1)
+    phoneInfo: { 
+      type: PhoneInfoSchema, 
+      default: () => ({ countryCode: 'LA', countryDialCode: '+856', isInternational: false }) 
+    },
+    nationality: { type: String, trim: true, uppercase: true, maxlength: 2 },
+    passportNumber: { type: String, trim: true }, // Should be encrypted in production
+
+    // Progressive Profile (Phase A2)
+    profileCompleteness: { 
+      type: ProfileCompletenessSchema, 
+      default: () => ({ percentage: 20, missingFields: ['fullName', 'dateOfBirth', 'gender', 'nationality'] }) 
+    },
+    registrationSource: { 
+      type: String, 
+      enum: ['app', 'web', 'qr_scan', 'referral'], 
+      default: 'app' 
+    },
+    referredBy: { type: Schema.Types.ObjectId, ref: 'User' },
 
     // Authentication
     authProviderId: { type: String, trim: true, index: true },
     lastLogin: { type: Date },
+    loginCount: { type: Number, default: 0 },
 
     // Roles & Profiles
     roles: {
@@ -270,6 +356,11 @@ UserSchema.index({ 'merchantProfiles.restaurantId': 1 });
 // V1 Integration indexes (for future account linking)
 UserSchema.index({ 'v1Integration.userId': 1 }, { sparse: true });
 UserSchema.index({ 'v1Integration.phone': 1 }, { sparse: true });
+// International user indexes (Phase A1)
+UserSchema.index({ nationality: 1 }, { sparse: true });
+UserSchema.index({ 'phoneInfo.countryCode': 1 });
+UserSchema.index({ 'phoneInfo.isInternational': 1 });
+UserSchema.index({ 'profileCompleteness.percentage': 1 });
 
 // Methods
 UserSchema.methods.getActiveProfileDetails = function (): IMerchantProfile | null {
@@ -316,6 +407,74 @@ UserSchema.methods.switchProfile = async function (
   return await this.save();
 };
 
+/**
+ * Calculate profile completeness percentage
+ * Used for progressive profiling
+ */
+UserSchema.methods.calculateProfileCompleteness = function (): IProfileCompleteness {
+  const fields = {
+    phone: { weight: 20, filled: !!this.phone },
+    fullName: { weight: 15, filled: !!this.fullName },
+    dateOfBirth: { weight: 15, filled: !!this.dateOfBirth },
+    gender: { weight: 10, filled: !!this.gender },
+    nationality: { weight: 15, filled: !!this.nationality },
+    email: { weight: 10, filled: !!this.email },
+    image: { weight: 10, filled: !!this.image },
+    address: { weight: 5, filled: !!this.address?.province },
+  };
+
+  let percentage = 0;
+  const missingFields: string[] = [];
+
+  for (const [field, info] of Object.entries(fields)) {
+    if (info.filled) {
+      percentage += info.weight;
+    } else {
+      missingFields.push(field);
+    }
+  }
+
+  return {
+    percentage: Math.min(100, percentage),
+    missingFields,
+    completedAt: percentage >= 100 ? new Date() : undefined,
+  };
+};
+
+/**
+ * Get required fields for specific actions
+ * Used to prompt users for missing data when needed
+ */
+UserSchema.methods.getRequiredFieldsForAction = function (action: string): string[] {
+  const actionRequirements: Record<string, string[]> = {
+    buy_coupon: ['fullName'],
+    book_hotel: ['fullName', 'nationality', 'passportNumber'],
+    book_activity: ['fullName'],
+    make_reservation: ['fullName'],
+    earn_points: ['fullName'],
+  };
+
+  const required = actionRequirements[action] || [];
+  const missing: string[] = [];
+
+  for (const field of required) {
+    if (!this[field]) {
+      missing.push(field);
+    }
+  }
+
+  return missing;
+};
+
+/**
+ * Check if user is a foreigner (non-Lao)
+ */
+UserSchema.methods.isForeigner = function (): boolean {
+  return this.phoneInfo?.isInternational || 
+         (this.nationality && this.nationality !== 'LA') ||
+         (this.phoneInfo?.countryCode && this.phoneInfo.countryCode !== 'LA');
+};
+
 // Transform output (remove sensitive fields)
 UserSchema.methods.toJSON = function () {
   const user = this.toObject();
@@ -324,7 +483,7 @@ UserSchema.methods.toJSON = function () {
   return user;
 };
 
-// Pre-save middleware to update loyalty tier
+// Pre-save middleware to update loyalty tier and profile completeness
 UserSchema.pre('save', function (next) {
   // Auto-update tier based on points balance
   if (this.isModified('points.balance')) {
@@ -339,6 +498,28 @@ UserSchema.pre('save', function (next) {
       this.points.tier = 'bronze';
     }
   }
+
+  // Auto-update profile completeness when profile fields change
+  const profileFields = ['fullName', 'dateOfBirth', 'gender', 'nationality', 'email', 'image', 'address'];
+  const isProfileFieldModified = profileFields.some(field => this.isModified(field));
+  
+  if (isProfileFieldModified || this.isNew) {
+    const completeness = this.calculateProfileCompleteness();
+    this.profileCompleteness = completeness;
+  }
+
+  // Detect if international phone number
+  if (this.isModified('phone') && this.phone) {
+    const phone = this.phone.replace(/^\+/, '');
+    const isLaoNumber = phone.startsWith('856');
+    this.phoneInfo = {
+      ...this.phoneInfo,
+      isInternational: !isLaoNumber,
+      countryCode: isLaoNumber ? 'LA' : (this.phoneInfo?.countryCode || 'UNKNOWN'),
+      countryDialCode: isLaoNumber ? '+856' : (this.phoneInfo?.countryDialCode || '+'),
+    };
+  }
+
   next();
 });
 

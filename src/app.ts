@@ -27,6 +27,11 @@ import promotionRoutes from './routes/promotion.routes';
 import couponRoutes from './routes/coupon.routes';
 import analyticsRoutes from './routes/analytics.routes';
 import restaurantRoutes from './routes/restaurant.routes';
+// New foreigner-focused routes (Phase A-E)
+import landmarkRoutes from './routes/landmark.routes';
+import hotelRoutes from './routes/hotel.routes';
+import activityRoutes from './routes/activity.routes';
+import advertisementRoutes from './routes/advertisement.routes';
 import * as deepLinkController from './controllers/deepLink.controller';
 import * as giftController from './controllers/gift.controller';
 
@@ -167,6 +172,11 @@ const createApp = (): Application => {
   app.use('/api/v1/coupons', couponRoutes);
   app.use('/api/v1/analytics', analyticsRoutes);
   app.use('/api/v1/restaurants', restaurantRoutes);
+  // New foreigner-focused routes (Phase A-E)
+  app.use('/api/v1/landmarks', landmarkRoutes);
+  app.use('/api/v1/hotels', hotelRoutes);
+  app.use('/api/v1/activities', activityRoutes);
+  app.use('/api/v1/ads', advertisementRoutes);
 
   // Root endpoint
   app.get('/', (req: Request, res: Response) => {
@@ -192,6 +202,11 @@ const createApp = (): Application => {
         coupons: '/api/v1/coupons',
         analytics: '/api/v1/analytics',
         restaurants: '/api/v1/restaurants',
+        // New foreigner-focused endpoints
+        landmarks: '/api/v1/landmarks',
+        hotels: '/api/v1/hotels',
+        activities: '/api/v1/activities',
+        ads: '/api/v1/ads',
         docs: 'See documentation at /docs',
       },
     });

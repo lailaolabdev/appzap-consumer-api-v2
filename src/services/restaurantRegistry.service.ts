@@ -244,7 +244,7 @@ export const searchRegistry = async (
     ]);
 
     return {
-      data: data as IRestaurantRegistry[],
+      data: data as unknown as IRestaurantRegistry[],
       total,
       page,
       limit,
@@ -367,7 +367,7 @@ export const getRestaurantsByVersion = async (
       RestaurantRegistry.countDocuments({ posVersion, isActive: true }),
     ]);
 
-    return { data: data as IRestaurantRegistry[], total };
+    return { data: data as unknown as IRestaurantRegistry[], total };
   } catch (error) {
     logger.error('[Registry] Failed to get restaurants by version', { posVersion, error });
     throw error;
