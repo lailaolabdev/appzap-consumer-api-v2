@@ -12,18 +12,50 @@ export type AdType =
 
 /**
  * Ad Placements
+ * Organized by product vertical for sponsor management
  */
 export type AdPlacement = 
-  | 'home_top'          // Top of home screen
-  | 'home_middle'       // Middle section
-  | 'home_bottom'       // Bottom section
-  | 'discover_top'      // Top of discover tab
-  | 'search_results'    // In search results
-  | 'detail_page'       // On detail pages
-  | 'category_page'     // On category pages
-  | 'checkout'          // Checkout flow
-  | 'app_open'          // On app open (popup)
-  | 'between_sections'; // Between content sections
+  // Home Hub Placements
+  | 'home_top'              // Top of home screen
+  | 'home_middle'           // Middle section
+  | 'home_bottom'           // Bottom section
+  | 'home_featured_deal'    // Featured deal card
+  
+  // AppZap Eat Placements (Heineken primary)
+  | 'eat_hero_banner'       // Eat hub top carousel
+  | 'eat_deal_card'         // Sponsored deal in deals tab
+  | 'eat_restaurant_badge'  // Badge on restaurant listings
+  | 'eat_menu_highlight'    // Drink menu product highlight
+  | 'eat_checkout_upsell'   // Checkout page upsell
+  | 'eat_confirmation'      // Order confirmation banner
+  | 'eat_between_listings'  // Between restaurant listings
+  
+  // AppZap Activity Placements
+  | 'activity_hero_banner'  // Activity hub top
+  | 'activity_event_sponsor'// Event listing sponsor
+  | 'activity_tour_card'    // Sponsored tour card
+  | 'activity_confirmation' // Booking confirmation
+  
+  // AppZap Stay Placements
+  | 'stay_hero_banner'      // Stay hub top
+  | 'stay_hotel_badge'      // Badge on hotel listings
+  | 'stay_deal_card'        // Sponsored deal
+  | 'stay_confirmation'     // Booking confirmation
+  
+  // AppZap Market Placements
+  | 'market_hero_banner'    // Market hub top
+  | 'market_category_sponsor'// Category sponsor
+  | 'market_checkout'       // Checkout upsell
+  
+  // Legacy/Generic Placements
+  | 'discover_top'          // Top of discover tab
+  | 'discover_banner'       // Discover banner
+  | 'search_results'        // In search results
+  | 'detail_page'           // On detail pages
+  | 'category_page'         // On category pages
+  | 'checkout'              // Checkout flow
+  | 'app_open'              // On app open (popup)
+  | 'between_sections';     // Between content sections
 
 /**
  * Ad Status
@@ -140,8 +172,11 @@ export interface IAdvertisement extends Document {
   name: string;               // Internal name
   description?: string;       // Internal description
   
-  // Advertiser
+  // Advertiser (inline for backward compat)
   advertiser: IAdvertiser;
+  
+  // Sponsor Reference (new - links to Advertiser collection)
+  sponsorId?: mongoose.Types.ObjectId;
   
   // Ad Type & Placement
   type: AdType;
@@ -331,6 +366,9 @@ const AdvertisementSchema = new Schema<IAdvertisement>(
     
     advertiser: { type: AdvertiserSchema, required: true },
     
+    // Reference to Advertiser collection (for sponsors like Heineken)
+    sponsorId: { type: Schema.Types.ObjectId, ref: 'Advertiser', index: true },
+    
     type: {
       type: String,
       enum: ['banner', 'popup', 'interstitial', 'native', 'sponsored'],
@@ -339,7 +377,22 @@ const AdvertisementSchema = new Schema<IAdvertisement>(
     },
     placement: {
       type: String,
-      enum: ['home_top', 'home_middle', 'home_bottom', 'discover_top', 'search_results', 'detail_page', 'category_page', 'checkout', 'app_open', 'between_sections'],
+      enum: [
+        // Home Hub
+        'home_top', 'home_middle', 'home_bottom', 'home_featured_deal',
+        // AppZap Eat
+        'eat_hero_banner', 'eat_deal_card', 'eat_restaurant_badge', 
+        'eat_menu_highlight', 'eat_checkout_upsell', 'eat_confirmation', 'eat_between_listings',
+        // AppZap Activity
+        'activity_hero_banner', 'activity_event_sponsor', 'activity_tour_card', 'activity_confirmation',
+        // AppZap Stay
+        'stay_hero_banner', 'stay_hotel_badge', 'stay_deal_card', 'stay_confirmation',
+        // AppZap Market
+        'market_hero_banner', 'market_category_sponsor', 'market_checkout',
+        // Legacy/Generic
+        'discover_top', 'discover_banner', 'search_results', 'detail_page', 
+        'category_page', 'checkout', 'app_open', 'between_sections'
+      ],
       required: true,
       index: true,
     },

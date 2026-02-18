@@ -32,6 +32,7 @@ import landmarkRoutes from './routes/landmark.routes';
 import hotelRoutes from './routes/hotel.routes';
 import activityRoutes from './routes/activity.routes';
 import advertisementRoutes from './routes/advertisement.routes';
+import advertiserRoutes from './routes/advertiser.routes';
 import * as deepLinkController from './controllers/deepLink.controller';
 import * as giftController from './controllers/gift.controller';
 
@@ -177,6 +178,7 @@ const createApp = (): Application => {
   app.use('/api/v1/hotels', hotelRoutes);
   app.use('/api/v1/activities', activityRoutes);
   app.use('/api/v1/ads', advertisementRoutes);
+  app.use('/api/v1/advertisers', advertiserRoutes);
 
   // Root endpoint
   app.get('/', (req: Request, res: Response) => {
