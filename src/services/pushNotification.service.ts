@@ -293,6 +293,209 @@ export const removeFCMToken = async (userId: string): Promise<void> => {
 };
 
 // ============================================================================
+// TOPIC-BASED NOTIFICATIONS (for broadcast to all subscribers)
+// ============================================================================
+
+/**
+ * Send notification to a topic (all subscribed devices)
+ */
+export const sendTopicNotification = async (params: {
+  topic: string;
+  title: string;
+  body: string;
+  data?: Record<string, string>;
+  imageUrl?: string;
+  deepLink?: string;
+}): Promise<boolean> => {
+  try {
+    const messaging = getMessaging();
+    if (!messaging) {
+      logger.warn('Firebase Messaging not available for topic notification');
+      return false;
+    }
+
+    const message: any = {
+      topic: params.topic,
+      notification: {
+        title: params.title,
+        body: params.body,
+      },
+      data: {
+        ...params.data,
+        topic: params.topic,
+        timestamp: new Date().toISOString(),
+      },
+      android: {
+        priority: 'high' as const,
+        notification: {
+          sound: 'default',
+          imageUrl: params.imageUrl,
+        },
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: 'default',
+            badge: 1,
+          },
+        },
+        fcm_options: {
+          image: params.imageUrl,
+        },
+      },
+    };
+
+    if (params.deepLink) {
+      message.data.deepLink = params.deepLink;
+    }
+
+    const response = await messaging.send(message);
+    logger.info('Topic notification sent', {
+      topic: params.topic,
+      title: params.title,
+      messageId: response,
+    });
+
+    return true;
+  } catch (error: any) {
+    logger.error('Failed to send topic notification', {
+      topic: params.topic,
+      error: error.message,
+    });
+    return false;
+  }
+};
+
+// ============================================================================
+// SPONSOR NOTIFICATION TEMPLATES
+// ============================================================================
+
+/**
+ * Send Heineken promotional notification
+ */
+export const sendHeinekenPromoNotification = async (params: {
+  topic?: string;
+  userId?: string;
+  promoTitle: string;
+  promoDescription: string;
+  discount?: string;
+  deepLink?: string;
+}) => {
+  const notificationParams = {
+    title: `🍺 ${params.promoTitle}`,
+    body: params.discount 
+      ? `${params.promoDescription} Get ${params.discount} off!`
+      : params.promoDescription,
+    data: {
+      type: 'sponsor_promo',
+      sponsor: 'heineken',
+      promoTitle: params.promoTitle,
+      discount: params.discount || '',
+    },
+    imageUrl: `${process.env.CDN_URL}/sponsors/heineken/notification-banner.jpg`,
+    deepLink: params.deepLink || 'appzap://deals?sponsor=heineken',
+  };
+
+  if (params.topic) {
+    return sendTopicNotification({
+      topic: params.topic,
+      ...notificationParams,
+    });
+  } else if (params.userId) {
+    return sendNotification({
+      userId: params.userId,
+      ...notificationParams,
+    });
+  }
+  return false;
+};
+
+/**
+ * Send flash deal notification
+ */
+export const sendFlashDealNotification = async (params: {
+  topic?: string;
+  userIds?: string[];
+  dealTitle: string;
+  restaurantName: string;
+  discount: string;
+  expiresIn: string;
+  deepLink?: string;
+}) => {
+  const notificationParams = {
+    title: `⚡ Flash Deal: ${params.discount} OFF!`,
+    body: `${params.dealTitle} at ${params.restaurantName}. Expires in ${params.expiresIn}!`,
+    data: {
+      type: 'flash_deal',
+      dealTitle: params.dealTitle,
+      restaurant: params.restaurantName,
+      discount: params.discount,
+    },
+    deepLink: params.deepLink || 'appzap://deals',
+  };
+
+  if (params.topic) {
+    return sendTopicNotification({
+      topic: params.topic,
+      ...notificationParams,
+    });
+  } else if (params.userIds) {
+    return sendBulkNotifications({
+      userIds: params.userIds,
+      ...notificationParams,
+    });
+  }
+  return false;
+};
+
+/**
+ * Send event reminder notification
+ */
+export const sendEventReminderNotification = async (params: {
+  userId: string;
+  eventName: string;
+  eventDate: string;
+  location: string;
+  deepLink?: string;
+}) => {
+  return sendNotification({
+    userId: params.userId,
+    title: `📅 Event Reminder: ${params.eventName}`,
+    body: `Don't forget! ${params.eventName} is happening on ${params.eventDate} at ${params.location}`,
+    data: {
+      type: 'event_reminder',
+      eventName: params.eventName,
+      eventDate: params.eventDate,
+      location: params.location,
+    },
+    deepLink: params.deepLink || 'appzap://activity',
+    priority: 'high',
+  });
+};
+
+/**
+ * Send daily deal digest notification (scheduled)
+ */
+export const sendDailyDealDigestNotification = async (params: {
+  topic: string;
+  dealCount: number;
+  topDeal?: string;
+}) => {
+  return sendTopicNotification({
+    topic: params.topic,
+    title: `🔥 ${params.dealCount} Hot Deals Today!`,
+    body: params.topDeal 
+      ? `Top deal: ${params.topDeal}. Open AppZap to discover all deals!`
+      : `Fresh deals waiting for you. Open AppZap to discover!`,
+    data: {
+      type: 'daily_digest',
+      dealCount: params.dealCount.toString(),
+    },
+    deepLink: 'appzap://deals',
+  });
+};
+
+// ============================================================================
 // EXPORT
 // ============================================================================
 
@@ -304,6 +507,11 @@ export default {
   sendLoyaltyPointsNotification,
   sendPromotionalNotification,
   sendBulkNotifications,
+  sendTopicNotification,
+  sendHeinekenPromoNotification,
+  sendFlashDealNotification,
+  sendEventReminderNotification,
+  sendDailyDealDigestNotification,
   updateFCMToken,
   removeFCMToken,
 };
