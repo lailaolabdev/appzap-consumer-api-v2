@@ -33,8 +33,10 @@ import hotelRoutes from './routes/hotel.routes';
 import activityRoutes from './routes/activity.routes';
 import advertisementRoutes from './routes/advertisement.routes';
 import advertiserRoutes from './routes/advertiser.routes';
+import adsDeliveryRoutes from './routes/ads.delivery.routes';
 import configRoutes from './routes/config.routes';
 import cartRoutes from './routes/cart.routes';
+import eventsRoutes from './routes/events.routes';
 import * as deepLinkController from './controllers/deepLink.controller';
 import * as giftController from './controllers/gift.controller';
 
@@ -180,9 +182,13 @@ const createApp = (): Application => {
   app.use('/api/v1/hotels', hotelRoutes);
   app.use('/api/v1/activities', activityRoutes);
   app.use('/api/v1/ads', advertisementRoutes);
+  // Feature 10: Ad delivery alias + lightweight tracking
+  app.use('/api/v1/ads', adsDeliveryRoutes);
   app.use('/api/v1/advertisers', advertiserRoutes);
   app.use('/api/v1/config', configRoutes);
   app.use('/api/v1/cart', cartRoutes);
+  // Feature 11: Live Events Discovery
+  app.use('/api/v1/discover/events', eventsRoutes);
 
   // Root endpoint
   app.get('/', (req: Request, res: Response) => {
