@@ -65,6 +65,30 @@ router.post('/logout', authenticate, authController.logout);
  */
 router.delete('/account', authenticate, authController.deleteAccount);
 
+/**
+ * @route   PATCH /v1/auth/language
+ * @desc    Update user's preferred language (Feature 14 — in-app localization toggle)
+ * @access  Private
+ */
+router.patch('/language', authenticate, async (req, res) => {
+  try {
+    const validLangs = ['lo', 'en', 'th', 'zh', 'ko', 'ja'];
+    const { language } = req.body;
+    if (!validLangs.includes(language)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_LANGUAGE', message: `language must be one of: ${validLangs.join(', ')}` },
+      });
+    }
+    (req.user as any).preferences.language = language;
+    await (req.user as any).save();
+    return res.json({ success: true, language, message: `Language set to ${language}` });
+  } catch (e: any) {
+    return res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 export default router;
+
 
 

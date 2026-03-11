@@ -9,7 +9,10 @@ export interface AccessTokenPayload {
   phone: string;
   roles: string[];
   activeProfile: 'personal' | 'merchant';
+  jti: string;
   type: 'access';
+  iat?: number;
+  exp?: number;
 }
 
 export interface RefreshTokenPayload {
@@ -32,6 +35,7 @@ export const generateAccessToken = (user: {
     phone: user.phone,
     roles: user.roles,
     activeProfile: user.activeProfile,
+    jti: uuidv4(),
     type: 'access',
   };
 

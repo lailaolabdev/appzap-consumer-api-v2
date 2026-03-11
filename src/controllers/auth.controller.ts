@@ -9,6 +9,7 @@ import { InvalidOTPError, InvalidTokenError, ValidationError } from '../utils/er
 import config from '../config/env';
 import { phoneUtils } from '../utils/helpers';
 import axios from 'axios';
+import DeviceToken from '../models/DeviceToken';
 
 /**
  * Request OTP
@@ -429,6 +430,13 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
       throw new InvalidTokenError('User not authenticated');
     }
 
+    // Feature 14: Blacklist access token JTI (JWTs can't be destroyed otherwise)
+    const payload = (req as any).tokenPayload;
+    if (payload?.jti && payload?.exp) {
+      const ttlSeconds = Math.max(1, payload.exp - Math.floor(Date.now() / 1000));
+      await redisHelpers.setWithTTL(`blacklist:jti:${payload.jti}`, '1', ttlSeconds);
+    }
+
     // Delete refresh token from Redis
     await redisHelpers.del(`refresh:${req.user._id}`);
 
@@ -459,22 +467,36 @@ export const deleteAccount = async (req: Request, res: Response): Promise<void> 
       throw new InvalidTokenError('User not authenticated');
     }
 
-    // 1. Blacklist the active Refresh Token instantly
+    // 1. Blacklist the active access token JTI + refresh token instantly
+    const payload = (req as any).tokenPayload;
+    if (payload?.jti && payload?.exp) {
+      const ttlSeconds = Math.max(1, payload.exp - Math.floor(Date.now() / 1000));
+      await redisHelpers.setWithTTL(`blacklist:jti:${payload.jti}`, '1', ttlSeconds);
+    }
     await redisHelpers.del(`refresh:${req.user._id}`);
 
-    // 2. Execute the Anonymization Script (Preserving _id for POS relational integrity)
-    req.user.phone = `DELETED_${req.user._id}_${Date.now()}`;
-    req.user.nickname = 'AppZap User';
-    req.user.yearOfBirth = undefined;
-    req.user.sex = undefined;
-    req.user.isDeleted = true;
-    req.user.deletedAt = new Date();
+    // 2. Execute the atomic anonymization script (preserve _id for historical integrity)
+    const deletedPhone = `DELETED_${req.user._id}_${Date.now()}`;
+    await User.updateOne(
+      { _id: req.user._id },
+      {
+        $set: {
+          phone: deletedPhone,
+          nickname: 'AppZap User',
+          fullName: undefined,
+          yearOfBirth: undefined,
+          sex: undefined,
+          email: undefined,
+          isDeleted: true,
+          deletedAt: new Date(),
+          'preferences.language': req.user.preferences?.language || 'en',
+          pushTokens: [],
+        },
+      }
+    );
 
-    // Clear all physical push notification tokens to prevent ghost spam
-    req.user.pushTokens = [];
-
-    // Force save the anonymized document
-    await req.user.save();
+    // 3. Prune push tokens (Admin must not message deleted users)
+    await DeviceToken.deleteMany({ user: req.user._id });
 
     logger.warn('User Account Deleted & Anonymized', {
       userId: req.user._id.toString(),

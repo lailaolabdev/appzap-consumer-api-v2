@@ -27,6 +27,7 @@ import promotionRoutes from './routes/promotion.routes';
 import couponRoutes from './routes/coupon.routes';
 import analyticsRoutes from './routes/analytics.routes';
 import restaurantRoutes from './routes/restaurant.routes';
+import scanRoutes from './routes/scan.routes';
 // New foreigner-focused routes (Phase A-E)
 import landmarkRoutes from './routes/landmark.routes';
 import hotelRoutes from './routes/hotel.routes';
@@ -37,6 +38,7 @@ import adsDeliveryRoutes from './routes/ads.delivery.routes';
 import configRoutes from './routes/config.routes';
 import cartRoutes from './routes/cart.routes';
 import eventsRoutes from './routes/events.routes';
+import entertainmentRoutes from './routes/entertainment.routes';
 import * as deepLinkController from './controllers/deepLink.controller';
 import * as giftController from './controllers/gift.controller';
 
@@ -177,6 +179,7 @@ const createApp = (): Application => {
   app.use('/api/v1/coupons', couponRoutes);
   app.use('/api/v1/analytics', analyticsRoutes);
   app.use('/api/v1/restaurants', restaurantRoutes);
+  app.use('/api/v1/scan', scanRoutes);
   // New foreigner-focused routes (Phase A-E)
   app.use('/api/v1/landmarks', landmarkRoutes);
   app.use('/api/v1/hotels', hotelRoutes);
@@ -189,6 +192,10 @@ const createApp = (): Application => {
   app.use('/api/v1/cart', cartRoutes);
   // Feature 11: Live Events Discovery
   app.use('/api/v1/discover/events', eventsRoutes);
+  // Feature 13: QR Menu Scanner Resolver
+  app.use('/api/v1/scan', scanRoutes);
+  // Feature 16: Live Song Requests & Band Tipping
+  app.use('/api/v1/entertainment', entertainmentRoutes);
 
   // Root endpoint
   app.get('/', (req: Request, res: Response) => {

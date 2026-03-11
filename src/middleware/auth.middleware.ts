@@ -3,6 +3,7 @@ import { verifyAccessToken, AccessTokenPayload } from '../utils/jwt';
 import User, { IUser } from '../models/User';
 import { InvalidTokenError, AuthenticationError } from '../utils/errors';
 import logger from '../utils/logger';
+import { redisHelpers } from '../config/redis';
 
 // Extend Express Request to include user
 declare global {
@@ -35,6 +36,15 @@ export const authenticate = async (
 
     // Verify token
     const payload = verifyAccessToken(token);
+
+    // Feature 14: Token blacklist (Logout / Account deletion)
+    // If jti is present, reject revoked tokens immediately.
+    if (payload.jti) {
+      const isRevoked = await redisHelpers.exists(`blacklist:jti:${payload.jti}`);
+      if (isRevoked) {
+        throw new InvalidTokenError('Token has been revoked');
+      }
+    }
 
     // Get user from database
     const user = await User.findById(payload.userId);
@@ -88,6 +98,12 @@ export const optionalAuthenticate = async (
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
       const payload = verifyAccessToken(token);
+      if (payload.jti) {
+        const isRevoked = await redisHelpers.exists(`blacklist:jti:${payload.jti}`);
+        if (isRevoked) {
+          return next();
+        }
+      }
       const user = await User.findById(payload.userId);
 
       if (user && !user.isDeleted) {
