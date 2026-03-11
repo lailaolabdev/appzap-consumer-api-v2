@@ -33,6 +33,8 @@ import hotelRoutes from './routes/hotel.routes';
 import activityRoutes from './routes/activity.routes';
 import advertisementRoutes from './routes/advertisement.routes';
 import advertiserRoutes from './routes/advertiser.routes';
+import configRoutes from './routes/config.routes';
+import cartRoutes from './routes/cart.routes';
 import * as deepLinkController from './controllers/deepLink.controller';
 import * as giftController from './controllers/gift.controller';
 
@@ -59,11 +61,11 @@ const createApp = (): Application => {
     origin:
       config.nodeEnv === 'production'
         ? [
-            'https://appzap.la',
-            'https://www.appzap.la',
-            'https://app.appzap.la',
-            // Add your Flutter app origins
-          ]
+          'https://appzap.la',
+          'https://www.appzap.la',
+          'https://app.appzap.la',
+          // Add your Flutter app origins
+        ]
         : '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -121,33 +123,33 @@ const createApp = (): Application => {
 
   // Deep link redirect (no prefix - for web users)
   app.get('/links/:shortCode', deepLinkController.handleDeepLinkRedirect);
-  
+
   // Gift deep link redirect
   app.get('/gift/:shortCode', (req, res) => {
     // Redirect to app with gift code
     const { shortCode } = req.params;
     const appUrl = `appzap://gift/${shortCode}`;
-    
+
     // If mobile, try to open app; otherwise show gift info
     const userAgent = req.get('User-Agent') || '';
     const isMobile = /iPhone|iPad|iPod|Android/i.test(userAgent);
-    
+
     if (isMobile) {
       res.redirect(appUrl);
     } else {
       res.redirect(`/api/v1/gifts/code/${shortCode}`);
     }
   });
-  
+
   // Bill split deep link redirect
   app.get('/split/:sessionCode', (req, res) => {
     const { sessionCode } = req.params;
     const appUrl = `appzap://split/${sessionCode}`;
-    
+
     // If mobile, try to open app; otherwise show session info
     const userAgent = req.get('User-Agent') || '';
     const isMobile = /iPhone|iPad|iPod|Android/i.test(userAgent);
-    
+
     if (isMobile) {
       res.redirect(appUrl);
     } else {
@@ -179,6 +181,8 @@ const createApp = (): Application => {
   app.use('/api/v1/activities', activityRoutes);
   app.use('/api/v1/ads', advertisementRoutes);
   app.use('/api/v1/advertisers', advertiserRoutes);
+  app.use('/api/v1/config', configRoutes);
+  app.use('/api/v1/cart', cartRoutes);
 
   // Root endpoint
   app.get('/', (req: Request, res: Response) => {
@@ -209,6 +213,7 @@ const createApp = (): Application => {
         hotels: '/api/v1/hotels',
         activities: '/api/v1/activities',
         ads: '/api/v1/ads',
+        config: '/api/v1/config',
         docs: 'See documentation at /docs',
       },
     });
@@ -230,12 +235,19 @@ const createApp = (): Application => {
   // ============================================================================
 
   app.use((error: Error | AppError, req: Request, res: Response, next: NextFunction) => {
-    // Log error
+    // Sanitize body to strip passwords/OTPs before telemetry logging
+    const sanitizedBody = { ...req.body };
+    if (sanitizedBody.password) sanitizedBody.password = '[REDACTED]';
+    if (sanitizedBody.otp) sanitizedBody.otp = '[REDACTED]';
+
+    // Log error securely
     logger.error('Express error handler', {
       error: error.message,
       stack: error.stack,
       path: req.path,
       method: req.method,
+      user_id: (req as any).user?.id || 'unauthenticated',
+      body: sanitizedBody,
     });
 
     // Determine status code

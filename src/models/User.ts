@@ -85,14 +85,14 @@ export interface IUser extends Document {
   nickname?: string;
   email?: string;
   image?: string;
-  dateOfBirth?: Date;
-  gender?: 'male' | 'female' | 'other' | 'prefer_not_to_say';
-  
+  yearOfBirth?: number;
+  sex?: 'M' | 'F' | 'O';
+
   // International Support (Phase A1)
   phoneInfo: IPhoneInfo;
   nationality?: string;         // ISO 3166-1 alpha-2: 'LA', 'US', 'TH', etc.
   passportNumber?: string;      // For hotel bookings (encrypted)
-  
+
   // Progressive Profile (Phase A2)
   profileCompleteness: IProfileCompleteness;
   registrationSource?: 'app' | 'web' | 'qr_scan' | 'referral';
@@ -272,26 +272,26 @@ const UserSchema = new Schema<IUser>(
       match: [/^\S+@\S+\.\S+$/, 'Invalid email format'],
     },
     image: { type: String, trim: true },
-    dateOfBirth: { type: Date },
-    gender: { type: String, enum: ['male', 'female', 'other', 'prefer_not_to_say'] },
+    yearOfBirth: { type: Number, min: 1900, max: new Date().getFullYear() },
+    sex: { type: String, enum: ['M', 'F', 'O'] },
 
     // International Support (Phase A1)
-    phoneInfo: { 
-      type: PhoneInfoSchema, 
-      default: () => ({ countryCode: 'LA', countryDialCode: '+856', isInternational: false }) 
+    phoneInfo: {
+      type: PhoneInfoSchema,
+      default: () => ({ countryCode: 'LA', countryDialCode: '+856', isInternational: false })
     },
     nationality: { type: String, trim: true, uppercase: true, maxlength: 2 },
     passportNumber: { type: String, trim: true }, // Should be encrypted in production
 
     // Progressive Profile (Phase A2)
-    profileCompleteness: { 
-      type: ProfileCompletenessSchema, 
-      default: () => ({ percentage: 20, missingFields: ['fullName', 'dateOfBirth', 'gender', 'nationality'] }) 
+    profileCompleteness: {
+      type: ProfileCompletenessSchema,
+      default: () => ({ percentage: 20, missingFields: ['fullName', 'yearOfBirth', 'sex', 'nationality'] })
     },
-    registrationSource: { 
-      type: String, 
-      enum: ['app', 'web', 'qr_scan', 'referral'], 
-      default: 'app' 
+    registrationSource: {
+      type: String,
+      enum: ['app', 'web', 'qr_scan', 'referral'],
+      default: 'app'
     },
     referredBy: { type: Schema.Types.ObjectId, ref: 'User' },
 
@@ -415,8 +415,8 @@ UserSchema.methods.calculateProfileCompleteness = function (): IProfileCompleten
   const fields = {
     phone: { weight: 20, filled: !!this.phone },
     fullName: { weight: 15, filled: !!this.fullName },
-    dateOfBirth: { weight: 15, filled: !!this.dateOfBirth },
-    gender: { weight: 10, filled: !!this.gender },
+    yearOfBirth: { weight: 15, filled: !!this.yearOfBirth },
+    sex: { weight: 10, filled: !!this.sex },
     nationality: { weight: 15, filled: !!this.nationality },
     email: { weight: 10, filled: !!this.email },
     image: { weight: 10, filled: !!this.image },
@@ -470,9 +470,9 @@ UserSchema.methods.getRequiredFieldsForAction = function (action: string): strin
  * Check if user is a foreigner (non-Lao)
  */
 UserSchema.methods.isForeigner = function (): boolean {
-  return this.phoneInfo?.isInternational || 
-         (this.nationality && this.nationality !== 'LA') ||
-         (this.phoneInfo?.countryCode && this.phoneInfo.countryCode !== 'LA');
+  return this.phoneInfo?.isInternational ||
+    (this.nationality && this.nationality !== 'LA') ||
+    (this.phoneInfo?.countryCode && this.phoneInfo.countryCode !== 'LA');
 };
 
 // Transform output (remove sensitive fields)
@@ -500,9 +500,9 @@ UserSchema.pre('save', function (next) {
   }
 
   // Auto-update profile completeness when profile fields change
-  const profileFields = ['fullName', 'dateOfBirth', 'gender', 'nationality', 'email', 'image', 'address'];
+  const profileFields = ['fullName', 'yearOfBirth', 'sex', 'nationality', 'email', 'image', 'address', 'nickname'];
   const isProfileFieldModified = profileFields.some(field => this.isModified(field));
-  
+
   if (isProfileFieldModified || this.isNew) {
     const completeness = this.calculateProfileCompleteness();
     this.profileCompleteness = completeness;

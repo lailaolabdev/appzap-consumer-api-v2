@@ -8,6 +8,7 @@ import logger, { maskPhone } from '../utils/logger';
 import { InvalidOTPError, InvalidTokenError, ValidationError } from '../utils/errors';
 import config from '../config/env';
 import { phoneUtils } from '../utils/helpers';
+import axios from 'axios';
 
 /**
  * Request OTP
@@ -149,9 +150,41 @@ export const verifyOTP = async (req: Request, res: Response): Promise<void> => {
       firstLogin: user.firstLogin,
     });
 
+    // Feature 15: Cross-Cluster SSO (AppZap Market Integration)
+    let marketAccessToken = null;
+    try {
+      // 1. Fire the internal Server-to-Server webhook
+      const marketSsoResponse = await axios.post(
+        `${process.env.SUPPLIER_API_URL || 'http://localhost:5004'}/api/internal/sso/hydrate`,
+        {
+          phone: normalizedPhone,
+          nickname: user.nickname || 'AppZap User',
+        },
+        {
+          headers: {
+            'X-Cluster-Auth': process.env.INTERNAL_CLUSTER_SECRET || 'appzap_eat_market_sso_secret',
+            'Content-Type': 'application/json',
+          },
+          timeout: 2500, // 2.5 second hard limit to prevent Eat login from hanging
+        }
+      );
+
+      // 2. Extract the Market JWT
+      if (marketSsoResponse.data && marketSsoResponse.data.token) {
+        marketAccessToken = marketSsoResponse.data.token;
+      }
+    } catch (ssoError: any) {
+      // Graceful degradation: If Market API is down, Eat login still succeeds.
+      logger.error('Market SSO Bridge Failed', {
+        userId: user._id.toString(),
+        error: ssoError.message
+      });
+    }
+
     res.json({
       accessToken,
       refreshToken,
+      marketAccessToken, // Returned flawlessly to the Flutter app
       user: user.toJSON(),
     });
   } catch (error: any) {
@@ -336,6 +369,57 @@ export const switchProfile = async (req: Request, res: Response): Promise<void> 
 };
 
 /**
+ * Update User Demographics (Feature 04)
+ * PATCH /v1/auth/demographics
+ */
+export const updateDemographics = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      throw new InvalidTokenError('User not authenticated');
+    }
+
+    const { nickname, yearOfBirth, sex } = req.body;
+
+    // Strict validation
+    if (nickname) req.user.nickname = nickname;
+    if (yearOfBirth) {
+      const parsedYear = parseInt(yearOfBirth);
+      if (parsedYear > 1900 && parsedYear <= new Date().getFullYear()) {
+        req.user.yearOfBirth = parsedYear;
+      } else {
+        throw new ValidationError('Invalid year of birth', { field: 'yearOfBirth' });
+      }
+    }
+    if (sex) {
+      if (['M', 'F', 'O'].includes(sex)) {
+        req.user.sex = sex as 'M' | 'F' | 'O';
+      } else {
+        throw new ValidationError('Invalid sex. Must be M, F, or O', { field: 'sex' });
+      }
+    }
+
+    await req.user.save();
+
+    logger.info('Demographics updated', { userId: req.user._id.toString() });
+
+    res.json({
+      success: true,
+      message: 'Demographics updated successfully',
+      user: req.user.toJSON(),
+    });
+  } catch (error: any) {
+    logger.error('Update demographics error', { error: error.message });
+    res.status(error.statusCode || 500).json({
+      error: {
+        code: error.code || 'UPDATE_DEMOGRAPHICS_FAILED',
+        message: error.message,
+        statusCode: error.statusCode || 500,
+      },
+    });
+  }
+};
+
+/**
  * Logout
  * POST /v1/auth/logout
  */
@@ -358,6 +442,54 @@ export const logout = async (req: Request, res: Response): Promise<void> => {
     res.status(error.statusCode || 500).json({
       error: {
         code: error.code || 'LOGOUT_FAILED',
+        message: error.message,
+        statusCode: error.statusCode || 500,
+      },
+    });
+  }
+};
+
+/**
+ * Account Deletion & Anonymization (Feature 14)
+ * DELETE /v1/auth/account
+ */
+export const deleteAccount = async (req: Request, res: Response): Promise<void> => {
+  try {
+    if (!req.user) {
+      throw new InvalidTokenError('User not authenticated');
+    }
+
+    // 1. Blacklist the active Refresh Token instantly
+    await redisHelpers.del(`refresh:${req.user._id}`);
+
+    // 2. Execute the Anonymization Script (Preserving _id for POS relational integrity)
+    req.user.phone = `DELETED_${req.user._id}_${Date.now()}`;
+    req.user.nickname = 'AppZap User';
+    req.user.yearOfBirth = undefined;
+    req.user.sex = undefined;
+    req.user.isDeleted = true;
+    req.user.deletedAt = new Date();
+
+    // Clear all physical push notification tokens to prevent ghost spam
+    req.user.pushTokens = [];
+
+    // Force save the anonymized document
+    await req.user.save();
+
+    logger.warn('User Account Deleted & Anonymized', {
+      userId: req.user._id.toString(),
+      timestamp: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      message: 'Account permanently deleted. Historical data has been anonymized.',
+    });
+  } catch (error: any) {
+    logger.error('Account deletion error', { error: error.message });
+    res.status(error.statusCode || 500).json({
+      error: {
+        code: error.code || 'ACCOUNT_DELETION_FAILED',
         message: error.message,
         statusCode: error.statusCode || 500,
       },

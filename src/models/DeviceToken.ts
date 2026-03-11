@@ -1,66 +1,51 @@
-import mongoose, { Document, Schema } from 'mongoose';
+import mongoose, { Document, Schema, Model } from 'mongoose';
 
 export interface IDeviceToken extends Document {
-  token: string;
-  platform: 'ios' | 'android';
-  userId?: mongoose.Types.ObjectId;
-  deviceInfo?: {
-    os?: string;
-    osVersion?: string;
-    appVersion?: string;
-    deviceModel?: string;
-  };
-  topics: string[];
+  user: mongoose.Types.ObjectId;
+  fcmToken: string;
+  deviceOS: 'iOS' | 'Android' | 'Web' | 'Unknown';
+  appVersion?: string;
+  lastActive: Date;
   isActive: boolean;
-  lastActiveAt: Date;
-  createdAt: Date;
-  updatedAt: Date;
 }
 
-const DeviceTokenSchema = new Schema<IDeviceToken>(
-  {
-    token: {
-      type: String,
-      required: true,
-      unique: true,
-      index: true,
-    },
-    platform: {
-      type: String,
-      required: true,
-      enum: ['ios', 'android'],
-    },
-    userId: {
-      type: Schema.Types.ObjectId,
-      ref: 'User',
-      index: true,
-    },
-    deviceInfo: {
-      os: String,
-      osVersion: String,
-      appVersion: String,
-      deviceModel: String,
-    },
-    topics: {
-      type: [String],
-      default: ['all', 'promotions'],
-    },
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
-    lastActiveAt: {
-      type: Date,
-      default: Date.now,
-    },
+const deviceTokenSchema = new Schema<IDeviceToken>({
+  user: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
   },
-  {
-    timestamps: true,
-  }
-);
+  fcmToken: {
+    type: String,
+    required: true,
+    unique: true,
+    trim: true,
+  },
+  deviceOS: {
+    type: String,
+    enum: ['iOS', 'Android', 'Web', 'Unknown'],
+    default: 'Unknown',
+  },
+  appVersion: {
+    type: String,
+  },
+  lastActive: {
+    type: Date,
+    default: Date.now,
+  },
+  isActive: {
+    type: Boolean,
+    default: true,
+  },
+}, {
+  timestamps: true,
+});
 
-DeviceTokenSchema.index({ userId: 1, isActive: 1 });
-DeviceTokenSchema.index({ topics: 1 });
-DeviceTokenSchema.index({ platform: 1, isActive: 1 });
+// Indexing for high-speed Admin broadcasts
+deviceTokenSchema.index({ user: 1 });
+deviceTokenSchema.index({ fcmToken: 1 });
+deviceTokenSchema.index({ lastActive: -1 });
 
-export default mongoose.model<IDeviceToken>('DeviceToken', DeviceTokenSchema);
+const DeviceToken: Model<IDeviceToken> = mongoose.models.DeviceToken || mongoose.model<IDeviceToken>('DeviceToken', deviceTokenSchema);
+
+export default DeviceToken;

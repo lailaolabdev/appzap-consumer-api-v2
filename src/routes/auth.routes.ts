@@ -45,11 +45,25 @@ router.get('/me', authenticate, authController.getCurrentUser);
 router.post('/switch-profile', authenticate, authController.switchProfile);
 
 /**
+ * @route   PATCH /v1/auth/demographics
+ * @desc    Update Nickname, Year of Birth, and Sex (Feature 04)
+ * @access  Private
+ */
+router.patch('/demographics', authenticate, authController.updateDemographics);
+
+/**
  * @route   POST /v1/auth/logout
  * @desc    Logout user
  * @access  Private
  */
 router.post('/logout', authenticate, authController.logout);
+
+/**
+ * @route   DELETE /v1/auth/account
+ * @desc    Permanently delete and anonymize user account (Feature 14)
+ * @access  Private
+ */
+router.delete('/account', authenticate, authController.deleteAccount);
 
 export default router;
 

@@ -170,9 +170,11 @@ describe('Phase 1: Authentication', () => {
       it.skip('should verify OTP successfully (requires DB)', async () => {
         mockAuthApiService.verifyOTP.mockResolvedValue({
           success: true,
+          message: 'Success',
           user: {
             id: 'auth-user-123',
             nickName: 'Test User',
+            phone: testPhones.valid, // Added to fix TypeScript error TS2741
           },
         });
 
