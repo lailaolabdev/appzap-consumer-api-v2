@@ -42,9 +42,14 @@ export interface IReview extends Document {
   // Metadata
   note?: string;
   isVerifiedPurchase: boolean;
+  orderId?: string;  // For duplicate-guard: one review per order
 
   // Points awarded for this review
   pointsAwarded: number;
+
+  // Admin moderation
+  isHidden: boolean;  // Hidden from public feed by admin
+  hiddenBy?: string;  // Admin user ID (audit trail)
 
   // Timestamps
   createdAt: Date;
@@ -128,12 +133,28 @@ const ReviewSchema = new Schema<IReview>(
       type: Boolean,
       default: false,
     },
+    orderId: {
+      type: String,
+      trim: true,
+      index: true,  // For fast duplicate lookup
+    },
 
     // Points awarded for this review
     pointsAwarded: {
       type: Number,
       default: 0,
       min: 0,
+    },
+
+    // Admin moderation
+    isHidden: {
+      type: Boolean,
+      default: false,
+      index: true,  // Filter hidden from public queries
+    },
+    hiddenBy: {
+      type: String,  // Admin user ID for audit
+      trim: true,
     },
   },
   {
@@ -150,9 +171,12 @@ const ReviewSchema = new Schema<IReview>(
 ReviewSchema.index({ storeId: 1, createdAt: -1 });
 ReviewSchema.index({ userId: 1, createdAt: -1 });
 ReviewSchema.index({ storeId: 1, star: 1 });
+ReviewSchema.index({ storeId: 1, isHidden: 1, createdAt: -1 });  // Public feed query
 
-// For checking daily review limit (one review per store per day per user)
+// For checking daily review limit
 ReviewSchema.index({ userId: 1, storeId: 1, createdAt: 1 });
+// For orderId duplicate guard
+ReviewSchema.index({ orderId: 1 }, { sparse: true, unique: true });
 
 // Text index for searching reviews
 ReviewSchema.index({ comment: 'text', storeName: 'text' });
@@ -167,7 +191,8 @@ ReviewSchema.index({ comment: 'text', storeName: 'text' });
 ReviewSchema.statics.getStoreStats = async function (
   storeId: string
 ): Promise<IReviewStats> {
-  const reviews = await this.find({ storeId }).select('star').lean();
+  // Exclude hidden reviews from public statistics
+  const reviews = await this.find({ storeId, isHidden: { $ne: true } }).select('star').lean();
 
   const stats: IReviewStats = {
     totalReviews: reviews.length,

@@ -39,6 +39,7 @@ export interface CreateReviewInput {
   star: number;
   comment?: string;
   images?: string[];
+  orderId?: string;  // Optional: enforces one-review-per-order when provided
 }
 
 export interface GetReviewsParams {
@@ -95,6 +96,18 @@ export const createReview = async (
       throw new NotFoundError('User', userId);
     }
 
+    // Check for orderId duplicate (one review per completed order)
+    if (input.orderId) {
+      const orderReview = await Review.findOne({ orderId: input.orderId });
+      if (orderReview) {
+        throw new BusinessLogicError(
+          'You have already reviewed this order',
+          'ORDER_ALREADY_REVIEWED',
+          { existingReviewId: orderReview._id }
+        );
+      }
+    }
+
     // Check for daily review limit (one review per store per day per user)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -128,7 +141,8 @@ export const createReview = async (
       userPhone: user.phone,
       userImage: user.image,
       pointsAwarded: REVIEW_POINTS_REWARD,
-      isVerifiedPurchase: false, // TODO: Check if user has ordered from this store
+      orderId: input.orderId,
+      isVerifiedPurchase: !!input.orderId,  // Verified if orderId is attached
     });
 
     // Award loyalty points
@@ -171,9 +185,12 @@ export const getStoreReviews = async (
 
     const skip = (page - 1) * limit;
 
-    // Fetch reviews with pagination and stats in parallel
+    // Fetch VISIBLE reviews only (isHidden: false) with pagination and stats in parallel
     const [reviews, stats] = await Promise.all([
-      Review.find({ storeId: new mongoose.Types.ObjectId(storeId) })
+      Review.find({
+        storeId: new mongoose.Types.ObjectId(storeId),
+        isHidden: { $ne: true },  // Exclude admin-hidden reviews
+      })
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -395,6 +412,114 @@ const awardReviewPoints = async (
 };
 
 // ============================================================================
+// ADMIN MODERATION
+// ============================================================================
+
+/**
+ * Toggle hidden status of a review (Admin only)
+ * Hidden reviews are excluded from all public feeds and rating calculations.
+ */
+export const hideReview = async (
+  reviewId: string,
+  adminId: string,
+  hide: boolean
+): Promise<IReview> => {
+  try {
+    const review = await Review.findById(reviewId);
+
+    if (!review) {
+      throw new NotFoundError('Review', reviewId);
+    }
+
+    review.isHidden = hide;
+    review.hiddenBy = hide ? adminId : undefined;
+    await review.save();
+
+    logger.info(`Review ${hide ? 'hidden' : 'unhidden'} by admin`, {
+      reviewId,
+      adminId,
+      isHidden: hide,
+    });
+
+    return review;
+  } catch (error) {
+    logger.error('Failed to toggle review visibility', { reviewId, adminId, error });
+    throw error;
+  }
+};
+
+/**
+ * Admin: delete any review regardless of ownership
+ */
+export const adminDeleteReview = async (
+  reviewId: string,
+  adminId: string
+): Promise<void> => {
+  try {
+    const review = await Review.findById(reviewId);
+
+    if (!review) {
+      throw new NotFoundError('Review', reviewId);
+    }
+
+    await Review.findByIdAndDelete(reviewId);
+
+    logger.info('Review hard-deleted by admin', { reviewId, adminId });
+  } catch (error) {
+    logger.error('Failed to admin-delete review', { reviewId, adminId, error });
+    throw error;
+  }
+};
+
+/**
+ * Admin: get all reviews (including hidden) with optional store filter
+ */
+export const adminGetAllReviews = async (params: {
+  page?: number;
+  limit?: number;
+  storeId?: string;
+  isHidden?: boolean;
+  minStar?: number;
+  maxStar?: number;
+}): Promise<{ reviews: IReview[]; pagination: any }> => {
+  try {
+    const { page = 1, limit = 20, storeId, isHidden, minStar, maxStar } = params;
+    const skip = (page - 1) * limit;
+
+    const query: any = {};
+    if (storeId) query.storeId = new mongoose.Types.ObjectId(storeId);
+    if (isHidden !== undefined) query.isHidden = isHidden;
+    if (minStar !== undefined || maxStar !== undefined) {
+      query.star = {};
+      if (minStar !== undefined) query.star.$gte = minStar;
+      if (maxStar !== undefined) query.star.$lte = maxStar;
+    }
+
+    const [reviews, total] = await Promise.all([
+      Review.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Review.countDocuments(query),
+    ]);
+
+    return {
+      reviews: reviews as unknown as IReview[],
+      pagination: {
+        total,
+        totalPages: Math.ceil(total / limit),
+        currentPage: page,
+        limit,
+      },
+    };
+  } catch (error) {
+    logger.error('Failed to get admin reviews', { params, error });
+    throw error;
+  }
+};
+
+// ============================================================================
 // STATISTICS
 // ============================================================================
 
@@ -424,5 +549,8 @@ export default {
   updateReview,
   deleteReview,
   getStoreReviewStats,
+  hideReview,
+  adminDeleteReview,
+  adminGetAllReviews,
   REVIEW_POINTS_REWARD,
 };

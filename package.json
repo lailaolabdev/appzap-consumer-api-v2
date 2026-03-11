@@ -14,6 +14,7 @@
     "test:phase2": "NODE_ENV=test jest --testPathPattern=phase2 --verbose",
     "test:phase3": "NODE_ENV=test jest --testPathPattern=phase3 --verbose",
     "test:phase4": "NODE_ENV=test jest --testPathPattern=phase4 --verbose",
+    "test:phase5": "NODE_ENV=test jest --testPathPattern=phase5 --verbose",
     "test:auth": "NODE_ENV=test jest --testPathPattern=auth.test --verbose",
     "test:cart": "NODE_ENV=test jest --testPathPattern=cart.test --verbose",
     "test:checkout": "NODE_ENV=test jest --testPathPattern=checkout.test --verbose",

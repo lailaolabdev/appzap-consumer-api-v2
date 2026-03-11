@@ -12,6 +12,7 @@
 
 import { posV1Service, PosV1Store, PosV1Menu, PosV1Bill, CreateBillPayload } from './posV1Api.service';
 import * as posV2Service from './posV2Api.service';
+import RestaurantRegistry from '../models/RestaurantRegistry';
 import logger from '../utils/logger';
 
 // ============================================================================
@@ -24,14 +25,14 @@ export interface UnifiedRestaurant {
   _id: string;
   posVersion: PosVersion;
   posRestaurantId: string;  // Original ID in POS system
-  
+
   // Basic info
   name: string;
   nameEn?: string;
   description?: string;
   phone?: string;
   email?: string;
-  
+
   // Location
   address?: {
     street?: string;
@@ -42,28 +43,28 @@ export interface UnifiedRestaurant {
     latitude?: number;
     longitude?: number;
   };
-  
+
   // Media
   image?: string;
   coverImage?: string;
   gallery?: string[];
-  
+
   // Status
   isOpen?: boolean;
   isActive: boolean;
   isReservable?: boolean;
-  
+
   // Ratings & pricing
   rating?: number;
   reviewCount?: number;
   averageCost?: number;
   priceRange?: 'budget' | 'moderate' | 'expensive' | 'luxury';
-  
+
   // Categories & tags
   cuisine?: string[];
   categories?: string[];
   tags?: string[];
-  
+
   // Hours
   openTime?: string;
   closeTime?: string;
@@ -73,11 +74,11 @@ export interface UnifiedRestaurant {
     close: string;
     isOpen: boolean;
   }[];
-  
+
   // Features
   features?: string[];
   paymentMethods?: string[];
-  
+
   // Timestamps
   createdAt?: string;
   updatedAt?: string;
@@ -88,37 +89,37 @@ export interface UnifiedMenuItem {
   posVersion: PosVersion;
   posMenuId: string;
   restaurantId: string;
-  
+
   name: string;
   nameEn?: string;
   description?: string;
   price: number;
   image?: string;
-  
+
   categoryId?: string;
   categoryName?: string;
-  
+
   isActive: boolean;
   isAvailable: boolean;
-  
+
   options?: {
     _id: string;
     name: string;
     price: number;
   }[];
-  
+
   toppings?: {
     _id: string;
     name: string;
     price: number;
   }[];
-  
+
   // Health/dietary info
   calories?: number;
   allergens?: string[];
   dietaryTags?: string[];
   spiceLevel?: number;
-  
+
   createdAt?: string;
   updatedAt?: string;
 }
@@ -139,13 +140,13 @@ export interface UnifiedOrder {
   posOrderId: string;
   restaurantId: string;
   restaurantName: string;
-  
+
   consumerId?: string;
   customerPhone?: string;
-  
+
   status: string;
   orderType: 'dine_in' | 'takeaway' | 'delivery';
-  
+
   items: {
     menuId: string;
     menuName: string;
@@ -156,19 +157,19 @@ export interface UnifiedOrder {
     toppings?: { name: string; price: number }[];
     note?: string;
   }[];
-  
+
   subtotal: number;
   discount?: number;
   deliveryFee?: number;
   tax?: number;
   total: number;
-  
+
   paymentMethod?: string;
   isPaid: boolean;
-  
+
   tableId?: string;
   tableName?: string;
-  
+
   createdAt?: string;
   updatedAt?: string;
 }
@@ -199,7 +200,7 @@ export interface CreateOrderPayload {
 // ============================================================================
 
 class UnifiedRestaurantService {
-  
+
   // ==========================================================================
   // RESTAURANT OPERATIONS
   // ==========================================================================
@@ -216,29 +217,29 @@ class UnifiedRestaurantService {
   } = {}): Promise<{ data: UnifiedRestaurant[]; total: number }> {
     try {
       const { skip = 0, limit = 20 } = params;
-      
+
       // Fetch from both POS systems in parallel using Consumer API endpoints
       // These use API key authentication
       logger.info('[UnifiedRestaurant] Fetching from POS V1 and V2...');
-      
+
       const [v1Result, v2Result] = await Promise.allSettled([
-        posV1Service.getStoresViaConsumerApi({ 
+        posV1Service.getStoresViaConsumerApi({
           limit: 500,  // Get all from V1
           search: params.search,
         }),
-        posV2Service.getRestaurantsViaConsumerApi({ 
+        posV2Service.getRestaurantsViaConsumerApi({
           limit: 500,  // Get all from V2
           search: params.search,
         }),
       ]);
-      
-      logger.info('[UnifiedRestaurant] V1 Result:', { 
-        status: v1Result.status, 
+
+      logger.info('[UnifiedRestaurant] V1 Result:', {
+        status: v1Result.status,
         dataCount: v1Result.status === 'fulfilled' ? v1Result.value?.data?.length : 0,
         error: v1Result.status === 'rejected' ? String((v1Result.reason as any)?.message) : undefined
       });
-      logger.info('[UnifiedRestaurant] V2 Result:', { 
-        status: v2Result.status, 
+      logger.info('[UnifiedRestaurant] V2 Result:', {
+        status: v2Result.status,
         dataCount: v2Result.status === 'fulfilled' ? v2Result.value?.data?.length : 0
       });
 
@@ -246,7 +247,7 @@ class UnifiedRestaurantService {
       const v1Restaurants: UnifiedRestaurant[] = v1Result.status === 'fulfilled'
         ? v1Result.value.data.map(r => this.transformV1Restaurant(r))
         : [];
-      
+
       const v2Restaurants: UnifiedRestaurant[] = v2Result.status === 'fulfilled'
         ? v2Result.value.data.map(r => this.transformV2Restaurant(r))
         : [];
@@ -261,30 +262,65 @@ class UnifiedRestaurantService {
 
       // Combine and sort (V2 first as they're newer/premium)
       let allRestaurants = [...v2Restaurants, ...v1Restaurants];
-      
+
       // Apply filters
       if (params.cuisine) {
-        allRestaurants = allRestaurants.filter(r => 
+        allRestaurants = allRestaurants.filter(r =>
           r.cuisine?.some(c => c.toLowerCase().includes(params.cuisine!.toLowerCase()))
         );
       }
-      
+
       if (params.isReservable !== undefined) {
         allRestaurants = allRestaurants.filter(r => r.isReservable === params.isReservable);
       }
-      
+
       if (params.search) {
         const searchLower = params.search.toLowerCase();
-        allRestaurants = allRestaurants.filter(r =>
-          r.name.toLowerCase().includes(searchLower) ||
-          r.nameEn?.toLowerCase().includes(searchLower) ||
-          r.cuisine?.some(c => c.toLowerCase().includes(searchLower))
-        );
+
+        // Semantic AI Text Resolution Mapping (Feature 06)
+        // If a query exists, ping the new MongoDB semantic text index resolving weighting natively
+        const semanticResults = await RestaurantRegistry.find(
+          { $text: { $search: searchLower }, isActive: true },
+          { score: { $meta: "textScore" } }
+        ).sort({ score: { $meta: "textScore" } }).lean();
+
+        if (semanticResults.length > 0) {
+          // Re-order the allRestaurants array based directly upon the textScore weights mapping
+          const semanticIdsSet = new Set(semanticResults.map(r => r.unifiedId));
+
+          // Partition matches vs non-matches
+          const exactSemanticMatches = allRestaurants.filter(r => semanticIdsSet.has(r._id));
+
+          // Secondary standard exact string fallback for partial indexing
+          const fallbackMatches = allRestaurants.filter(r =>
+            !semanticIdsSet.has(r._id) && (
+              r.name.toLowerCase().includes(searchLower) ||
+              r.nameEn?.toLowerCase().includes(searchLower) ||
+              r.cuisine?.some(c => c.toLowerCase().includes(searchLower))
+            )
+          );
+
+          // Sort exact semantic matches by the MongoDB weighting order structurally
+          exactSemanticMatches.sort((a, b) => {
+            const aIndex = semanticResults.findIndex(sr => sr.unifiedId === a._id);
+            const bIndex = semanticResults.findIndex(sr => sr.unifiedId === b._id);
+            return aIndex - bIndex;
+          });
+
+          allRestaurants = [...exactSemanticMatches, ...fallbackMatches];
+        } else {
+          // Null Fallback Algorithm gracefully handling standard filters naturally
+          allRestaurants = allRestaurants.filter(r =>
+            r.name.toLowerCase().includes(searchLower) ||
+            r.nameEn?.toLowerCase().includes(searchLower) ||
+            r.cuisine?.some(c => c.toLowerCase().includes(searchLower))
+          );
+        }
       }
 
       // Calculate total before pagination
       const total = allRestaurants.length;
-      
+
       // Apply pagination
       const paginatedData = allRestaurants.slice(skip, skip + limit);
 
@@ -302,7 +338,7 @@ class UnifiedRestaurantService {
    * Get restaurant by ID (auto-routes to correct POS)
    */
   async getRestaurantById(
-    restaurantId: string, 
+    restaurantId: string,
     posVersion?: PosVersion
   ): Promise<UnifiedRestaurant | null> {
     try {
@@ -311,7 +347,7 @@ class UnifiedRestaurantService {
         const store = await posV1Service.getStoreById(restaurantId);
         return store ? this.transformV1Restaurant(store) : null;
       }
-      
+
       if (posVersion === 'v2') {
         const restaurant = await posV2Service.getRestaurantById(restaurantId);
         return restaurant ? this.transformV2Restaurant(restaurant) : null;
@@ -377,16 +413,16 @@ class UnifiedRestaurantService {
 
       if (posVersion === 'v2') {
         const restaurant = await posV2Service.getRestaurantById(restaurantId);
-        
+
         if (!restaurant) {
           return { categories: [], items: [] };
         }
 
         return {
-          categories: (restaurant.menu?.categories || []).map(c => 
+          categories: (restaurant.menu?.categories || []).map(c =>
             this.transformV2Category(c, restaurantId)
           ),
-          items: (restaurant.menu?.items || []).map(m => 
+          items: (restaurant.menu?.items || []).map(m =>
             this.transformV2MenuItem(m, restaurantId)
           ),
         };
@@ -574,12 +610,12 @@ class UnifiedRestaurantService {
       _id: `v1_${storeId}`,
       posVersion: 'v1',
       posRestaurantId: storeId,
-      
+
       name: store.name,
       nameEn: store.nameEn,
       phone: store.phone,
       email: store.email,
-      
+
       address: store.address ? {
         village: store.address.village,
         district: store.address.district,
@@ -587,22 +623,22 @@ class UnifiedRestaurantService {
         latitude: store.address.latitude ? parseFloat(store.address.latitude) : undefined,
         longitude: store.address.longitude ? parseFloat(store.address.longitude) : undefined,
       } : undefined,
-      
+
       image: store.image,
       coverImage: store.coverImage,
-      
+
       isOpen: store.isOpen,
       isActive: store.isActive !== false,
       isReservable: store.isReservable,
-      
+
       rating: store.rating,
       averageCost: store.averageCost,
-      
+
       categories: store.categories,
-      
+
       openTime: store.openTime,
       closeTime: store.closeTime,
-      
+
       createdAt: store.createdAt,
       updatedAt: store.updatedAt,
     };
@@ -614,22 +650,22 @@ class UnifiedRestaurantService {
       posVersion: 'v1',
       posMenuId: menu._id,
       restaurantId: menu.storeId,
-      
+
       name: menu.name,
       nameEn: menu.nameEn,
       description: menu.description,
       price: menu.price,
       image: menu.image,
-      
+
       categoryId: menu.categoryId,
       categoryName: menu.categoryName,
-      
+
       isActive: menu.isActive !== false,
       isAvailable: menu.isAvailable !== false,
-      
+
       options: menu.options,
       toppings: menu.toppings,
-      
+
       createdAt: menu.createdAt,
       updatedAt: menu.updatedAt,
     };
@@ -654,13 +690,13 @@ class UnifiedRestaurantService {
       posOrderId: bill._id,
       restaurantId: bill.storeId,
       restaurantName: '',  // Need to fetch separately if needed
-      
+
       consumerId: bill.consumerId,
       customerPhone: bill.customerPhone,
-      
+
       status: bill.status,
       orderType: 'dine_in',  // Default for V1
-      
+
       items: (bill.orders || []).map(order => ({
         menuId: order.menuId,
         menuName: order.menuName,
@@ -671,17 +707,17 @@ class UnifiedRestaurantService {
         toppings: order.toppings,
         note: order.note,
       })),
-      
+
       subtotal: bill.totalAmount,
       discount: bill.discountAmount,
       total: bill.finalAmount,
-      
+
       paymentMethod: bill.paymentMethod,
       isPaid: bill.isPaid || false,
-      
+
       tableId: bill.tableId,
       tableName: bill.tableName,
-      
+
       createdAt: bill.createdAt,
       updatedAt: bill.updatedAt,
     };
@@ -698,13 +734,13 @@ class UnifiedRestaurantService {
       _id: `v2_${restaurantId}`,
       posVersion: 'v2',
       posRestaurantId: restaurantId,
-      
+
       name: restaurant.name,
       nameEn: restaurant.nameEn,
       description: restaurant.description,
       phone: restaurant.phone,
       email: restaurant.email,
-      
+
       address: restaurant.address ? {
         street: restaurant.address.street,
         village: restaurant.address.village,
@@ -714,23 +750,23 @@ class UnifiedRestaurantService {
         latitude: restaurant.address.location?.coordinates?.[1],
         longitude: restaurant.address.location?.coordinates?.[0],
       } : undefined,
-      
+
       image: restaurant.logo || restaurant.image,
       coverImage: restaurant.coverImage,
       gallery: restaurant.galleryImages,
-      
+
       isOpen: restaurant.isOpen,
       isActive: restaurant.isActive !== false,
       isReservable: restaurant.settings?.serviceOptions?.reservation?.enabled,
-      
+
       rating: restaurant.rating?.average,
       reviewCount: restaurant.rating?.count,
-      
+
       cuisine: restaurant.cuisine,
       tags: restaurant.tags,
-      
+
       features: this.extractV2Features(restaurant),
-      
+
       createdAt: restaurant.createdAt,
       updatedAt: restaurant.updatedAt,
     };
@@ -742,27 +778,27 @@ class UnifiedRestaurantService {
       posVersion: 'v2',
       posMenuId: item._id,
       restaurantId,
-      
+
       name: item.name,
       nameEn: item.nameEn,
       description: item.description,
       price: item.basePrice || item.price,
       image: item.image,
-      
+
       categoryId: item.categoryId,
       categoryName: item.categoryName,
-      
+
       isActive: item.isActive !== false,
       isAvailable: item.isAvailable !== false,
-      
+
       options: item.options || item.variants,
       toppings: item.addons || item.toppings,
-      
+
       calories: item.nutritionalInfo?.calories,
       allergens: item.allergens,
       dietaryTags: item.dietaryInfo,
       spiceLevel: item.spiceLevel,
-      
+
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     };
@@ -787,13 +823,13 @@ class UnifiedRestaurantService {
       posOrderId: order._id,
       restaurantId: order.restaurantId,
       restaurantName: order.restaurantName || '',
-      
+
       consumerId: order.customerId,
       customerPhone: order.customerPhone,
-      
+
       status: order.status,
       orderType: order.orderType || 'dine_in',
-      
+
       items: (order.items || []).map((item: any) => ({
         menuId: item.menuItemId,
         menuName: item.name,
@@ -804,19 +840,19 @@ class UnifiedRestaurantService {
         toppings: item.selectedAddons,
         note: item.specialInstructions,
       })),
-      
+
       subtotal: order.subtotal,
       discount: order.discount,
       deliveryFee: order.deliveryFee,
       tax: order.tax,
       total: order.total,
-      
+
       paymentMethod: order.paymentMethod,
       isPaid: order.paymentStatus === 'paid',
-      
+
       tableId: order.tableId,
       tableName: order.tableName,
-      
+
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
     };

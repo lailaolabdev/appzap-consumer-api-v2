@@ -40,16 +40,18 @@ export interface ISyncStatus {
 export interface IRestaurantRegistry extends Document {
   // Unified identifier
   unifiedId: string;              // Format: v1_xxx or v2_xxx
-  
+
   // POS system info
   posVersion: POSVersionType;
   posId: string;                  // Original POS ID
-  
+
   // Basic restaurant info (cached)
   name: string;
   nameEn?: string;
   image?: string;
-  
+  tags?: string[];
+  description?: string;
+
   // Location (for proximity searches)
   location?: {
     type: 'Point';
@@ -57,21 +59,21 @@ export interface IRestaurantRegistry extends Document {
   };
   province?: string;
   district?: string;
-  
+
   // Feature flags
   features: IRestaurantFeatureFlags;
-  
+
   // Status
   isActive: boolean;
   isOpen: boolean;
-  
+
   // Sync tracking
   syncStatus: ISyncStatus;
-  
+
   // Metadata
   createdAt: Date;
   updatedAt: Date;
-  
+
   // Methods
   markSynced(success: boolean, error?: string): Promise<IRestaurantRegistry>;
 }
@@ -125,13 +127,18 @@ const RestaurantRegistrySchema = new Schema<IRestaurantRegistry>(
     name: {
       type: String,
       required: true,
-      index: 'text',
     },
     nameEn: {
       type: String,
-      index: 'text',
     },
     image: {
+      type: String,
+    },
+    tags: [{
+      type: String,
+      index: true,
+    }],
+    description: {
       type: String,
     },
     location: {
@@ -182,6 +189,26 @@ const RestaurantRegistrySchema = new Schema<IRestaurantRegistry>(
 
 // Geospatial index for location-based queries
 RestaurantRegistrySchema.index({ location: '2dsphere' });
+
+// Semantic AI Multi-Index Search (Feature 06)
+// Heavily weights Tags specifically, then Names, then general body Description
+RestaurantRegistrySchema.index(
+  {
+    tags: 'text',
+    name: 'text',
+    nameEn: 'text',
+    description: 'text',
+  },
+  {
+    weights: {
+      tags: 10,
+      name: 5,
+      nameEn: 5,
+      description: 2,
+    },
+    name: 'SemanticRestaurantSearchIndex',
+  }
+);
 
 // Compound indexes for common queries
 RestaurantRegistrySchema.index({ posVersion: 1, isActive: 1 });

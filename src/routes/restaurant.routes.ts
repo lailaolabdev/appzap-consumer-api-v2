@@ -243,7 +243,7 @@ router.get('/:id/package', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const pkg = await restaurantPackageService.getRestaurantPackage(id);
-    
+
     res.json({
       success: true,
       data: pkg,
@@ -284,8 +284,8 @@ router.post('/:id/package', async (req: Request, res: Response) => {
     return res.json({
       success: true,
       data: pkg,
-      message: pkg.isPaid 
-        ? 'Package activated successfully' 
+      message: pkg.isPaid
+        ? 'Package activated successfully'
         : 'Package created, awaiting payment',
     });
   } catch (error) {
@@ -378,6 +378,118 @@ router.get('/admin/revenue', authenticate, async (req: Request, res: Response) =
       success: false,
       error: 'Failed to get revenue summary',
     });
+  }
+});
+
+// ============================================================================
+// RECOMMENDATION MANAGEMENT - Feature 07
+// ============================================================================
+
+import RecommendedRestaurant from '../models/RecommendedRestaurant';
+import RestaurantRegistry from '../models/RestaurantRegistry';
+
+/**
+ * GET /api/v1/restaurants/recommendations/active
+ * Get actively scheduled VIP recommendations (Consumer App)
+ */
+router.get('/recommendations/active', async (req: Request, res: Response) => {
+  try {
+    const now = new Date();
+
+    // Find all explicitly promoted unifiedIds that match current date boundary natively
+    const activePromotions = await RecommendedRestaurant.find({
+      isActive: true,
+      startDate: { $lte: now },
+      endDate: { $gte: now }
+    }).sort({ priorityIndex: 1 }).lean();
+
+    if (!activePromotions.length) {
+      return res.json({
+        success: true,
+        data: [],
+        total: 0
+      });
+    }
+
+    // Resolve unifiedIds to fast-cached Registry info 
+    const unifiedIds = activePromotions.map(p => p.unifiedId);
+    const restaurants = await RestaurantRegistry.find({
+      unifiedId: { $in: unifiedIds },
+      isActive: true
+    }).lean();
+
+    // Map priority sorting rules mapped flawlessly back from Promoted Array indexing natively
+    const sortedData = activePromotions.map(promo => {
+      const rest = restaurants.find(r => r.unifiedId === promo.unifiedId);
+      return rest ? { ...rest, priorityIndex: promo.priorityIndex } : null;
+    }).filter(x => x !== null);
+
+    return res.json({
+      success: true,
+      data: sortedData,
+      total: sortedData.length
+    });
+  } catch (error) {
+    logger.error('[RestaurantRoutes] Failed to fetch Active Recommendations:', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch Active Recommendations' });
+  }
+});
+
+/**
+ * GET /api/v1/restaurants/admin/recommendations
+ * Admin view ALL scheduled recommendations 
+ */
+router.get('/admin/recommendations', authenticate, async (req: Request, res: Response) => {
+  try {
+    const promos = await RecommendedRestaurant.find().sort({ createdAt: -1 }).lean();
+    return res.json({ success: true, data: promos, total: promos.length });
+  } catch (error) {
+    logger.error('[RestaurantRoutes] Failed to fetch Admin Recommendations:', error);
+    return res.status(500).json({ success: false, error: 'Failed' });
+  }
+});
+
+/**
+ * POST /api/v1/restaurants/admin/recommendations
+ * Schedule a new Restaurant VIP Promoted listing
+ */
+router.post('/admin/recommendations', authenticate, async (req: Request, res: Response) => {
+  try {
+    const { unifiedId, startDate, endDate, priorityIndex } = req.body;
+
+    // Verify Registry existence natively
+    const validRest = await RestaurantRegistry.findOne({ unifiedId });
+    if (!validRest) return res.status(404).json({ success: false, error: 'Target unifiedId not found' });
+
+    const newPromo = await RecommendedRestaurant.create({
+      unifiedId,
+      startDate: new Date(startDate),
+      endDate: new Date(endDate),
+      priorityIndex: priorityIndex || 5,
+      // @ts-ignore
+      createdBy: req.user?._id || 'admin'
+    });
+
+    return res.status(201).json({ success: true, data: newPromo });
+  } catch (error) {
+    logger.error('[RestaurantRoutes] VIP Broadcast Creation Failed:', error);
+    return res.status(500).json({ success: false, error: 'Failed to create Promoted Listing' });
+  }
+});
+
+/**
+ * DELETE /api/v1/restaurants/admin/recommendations/:id
+ * Remove a scheduled VIP listing explicitly (Admin)
+ */
+router.delete('/admin/recommendations/:id', authenticate, async (req: Request, res: Response) => {
+  try {
+    const promo = await RecommendedRestaurant.findByIdAndDelete(req.params.id);
+    if (!promo) return res.status(404).json({ success: false, error: 'Target promotion missing/deleted.' });
+
+    return res.json({ success: true, data: { id: promo._id } });
+  } catch (error) {
+    logger.error('[RestaurantRoutes] Failed to delete VIP Promote block:', error);
+    return res.status(500).json({ success: false, error: 'Deletion Failed' });
   }
 });
 

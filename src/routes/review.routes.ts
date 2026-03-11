@@ -1,18 +1,27 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import * as reviewController from '../controllers/review.controller';
 import { authenticate, optionalAuthenticate } from '../middleware/auth.middleware';
+import { hideReview, adminDeleteReview, adminGetAllReviews } from '../services/review.service';
+import logger from '../utils/logger';
 
 /**
  * Review Routes for AppZap Consumer API V2
  *
- * Endpoints:
- * - GET  /api/v1/reviews              - Get reviews for a store (public)
- * - GET  /api/v1/reviews/my-reviews   - Get current user's reviews (auth)
- * - GET  /api/v1/reviews/stats/:storeId - Get store review statistics (public)
- * - GET  /api/v1/reviews/:id          - Get a single review (public)
- * - POST /api/v1/reviews              - Create a review (auth, earns points)
- * - PUT  /api/v1/reviews/:id          - Update a review (auth, owner only)
- * - DELETE /api/v1/reviews/:id        - Delete a review (auth, owner only)
+ * PUBLIC:
+ *   GET  /api/v1/reviews              - Get reviews for a store (isHidden excluded)
+ *   GET  /api/v1/reviews/stats/:storeId - Review stats (hidden excluded from avg)
+ *   GET  /api/v1/reviews/:id          - Single review
+ *
+ * AUTHENTICATED:
+ *   GET  /api/v1/reviews/my-reviews   - Current user's reviews
+ *   POST /api/v1/reviews              - Submit review (orderId duplicate guard)
+ *   PUT  /api/v1/reviews/:id          - Update own review
+ *   DELETE /api/v1/reviews/:id        - Delete own review
+ *
+ * ADMIN:
+ *   GET    /api/v1/reviews/admin              - All reviews (including hidden) paginated
+ *   PATCH  /api/v1/reviews/admin/:id/hide     - Toggle isHidden flag
+ *   DELETE /api/v1/reviews/admin/:id          - Hard delete any review
  */
 
 const router = Router();
@@ -22,70 +31,146 @@ const router = Router();
 // ============================================================================
 
 /**
- * @route   GET /api/v1/reviews
- * @desc    Get reviews for a store with rating statistics
- * @access  Public
- * @query   storeId (required) - The store ID to get reviews for
- * @query   page (optional) - Page number (default: 1)
- * @query   limit (optional) - Items per page (default: 10)
+ * GET /api/v1/reviews?storeId=xxx&page=1&limit=10
+ * Returns visible (isHidden: false) reviews only.
  */
 router.get('/', reviewController.getStoreReviews);
 
 /**
- * @route   GET /api/v1/reviews/my-reviews
- * @desc    Get the current user's submitted reviews
- * @access  Private
- * @query   page (optional) - Page number (default: 1)
- * @query   limit (optional) - Items per page (default: 10)
- * @note    This route MUST be defined before /:id to avoid matching "my-reviews" as an ID
+ * GET /api/v1/reviews/my-reviews
+ * NOTE: Must be declared BEFORE /:id to prevent "my-reviews" matching as an ObjectId.
  */
 router.get('/my-reviews', authenticate, reviewController.getMyReviews);
 
 /**
- * @route   GET /api/v1/reviews/stats/:storeId
- * @desc    Get review statistics for a store (average rating, star counts)
- * @access  Public
+ * GET /api/v1/reviews/stats/:storeId
+ * Rating statistics (average, star distribution). Hidden reviews excluded.
  */
 router.get('/stats/:storeId', reviewController.getStoreReviewStats);
 
+// ============================================================================
+// ADMIN ROUTES
+// NOTE: /admin routes must also be declared BEFORE /:id to avoid ObjectId match.
+// ============================================================================
+
 /**
- * @route   GET /api/v1/reviews/:id
- * @desc    Get a single review by ID
- * @access  Public
+ * GET /api/v1/reviews/admin?page=1&limit=20&storeId=xxx&isHidden=true
+ * Returns ALL reviews (including hidden) for admin moderation.
+ */
+router.get('/admin', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 20;
+        const storeId = req.query.storeId as string | undefined;
+        const isHiddenParam = req.query.isHidden as string | undefined;
+        const isHiddenFilter =
+            isHiddenParam === 'true' ? true : isHiddenParam === 'false' ? false : undefined;
+        const minStar = req.query.minStar ? parseInt(req.query.minStar as string) : undefined;
+        const maxStar = req.query.maxStar ? parseInt(req.query.maxStar as string) : undefined;
+
+        const result = await adminGetAllReviews({
+            page,
+            limit,
+            storeId,
+            isHidden: isHiddenFilter,
+            minStar,
+            maxStar,
+        });
+
+        return res.json({ success: true, ...result });
+    } catch (error) {
+        return next(error);
+    }
+});
+
+/**
+ * PATCH /api/v1/reviews/admin/:id/hide
+ * Body: { hide: boolean }
+ * Toggles isHidden. Hidden reviews are removed from all public responses.
+ */
+router.patch(
+    '/admin/:id/hide',
+    authenticate,
+    async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { id } = req.params;
+            const { hide } = req.body;
+            const adminId = (req as any).user?.userId || 'unknown_admin';
+
+            if (typeof hide !== 'boolean') {
+                return res.status(400).json({
+                    success: false,
+                    error: { code: 'INVALID_BODY', message: '`hide` must be a boolean' },
+                });
+            }
+
+            const review = await hideReview(id, adminId, hide);
+
+            logger.info(`Admin ${adminId} ${hide ? 'hid' : 'unhid'} review ${id}`);
+
+            return res.json({
+                success: true,
+                message: hide ? 'Review hidden from public feed' : 'Review restored to public feed',
+                data: { reviewId: id, isHidden: review.isHidden },
+            });
+        } catch (error) {
+            return next(error);
+        }
+    }
+);
+
+/**
+ * DELETE /api/v1/reviews/admin/:id
+ * Hard delete any review regardless of ownership. Admin only.
+ */
+router.delete(
+    '/admin/:id',
+    authenticate,
+    async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { id } = req.params;
+            const adminId = (req as any).user?.userId || 'unknown_admin';
+
+            await adminDeleteReview(id, adminId);
+
+            return res.json({
+                success: true,
+                message: 'Review permanently deleted',
+                data: { reviewId: id },
+            });
+        } catch (error) {
+            return next(error);
+        }
+    }
+);
+
+// ============================================================================
+// SINGLE REVIEW — must come after named routes like /admin, /stats, /my-reviews
+// ============================================================================
+
+/**
+ * GET /api/v1/reviews/:id
  */
 router.get('/:id', reviewController.getReviewById);
 
 // ============================================================================
-// AUTHENTICATED ROUTES
+// AUTHENTICATED USER ROUTES
 // ============================================================================
 
 /**
- * @route   POST /api/v1/reviews
- * @desc    Create a new review for a store (awards loyalty points)
- * @access  Private
- * @body    storeId (required) - The store ID to review
- * @body    star (required) - Star rating (1-5)
- * @body    comment (optional) - Review comment
- * @body    images (optional) - Array of image URLs (max 5)
- * @body    storeName (optional) - Store name for denormalization
- * @body    storeImage (optional) - Store image for denormalization
+ * POST /api/v1/reviews
+ * Body: { storeId, star, comment?, images?, orderId? }
+ * orderId enables the duplicate-review-per-order guard.
  */
 router.post('/', authenticate, reviewController.createReview);
 
 /**
- * @route   PUT /api/v1/reviews/:id
- * @desc    Update an existing review (owner only)
- * @access  Private
- * @body    star (optional) - Star rating (1-5)
- * @body    comment (optional) - Review comment
- * @body    images (optional) - Array of image URLs (max 5)
+ * PUT /api/v1/reviews/:id — edit own review
  */
 router.put('/:id', authenticate, reviewController.updateReview);
 
 /**
- * @route   DELETE /api/v1/reviews/:id
- * @desc    Delete a review (owner only)
- * @access  Private
+ * DELETE /api/v1/reviews/:id — delete own review
  */
 router.delete('/:id', authenticate, reviewController.deleteReview);
 
