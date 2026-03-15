@@ -17,7 +17,7 @@ import logger from '../utils/logger';
  * drained by a cron worker — the MongoDB $inc approach is production-safe here.
  */
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * GET /api/v1/ads/delivery?zone=HOME_CAROUSEL

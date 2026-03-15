@@ -9,7 +9,7 @@ import { authenticate } from '../middleware/auth.middleware';
 import logger from '../utils/logger';
 import { ActivityCategory, EventType } from '../models/Activity';
 
-const router = Router();
+const router:Router = Router();
 
 /**
  * GET /api/v1/activities

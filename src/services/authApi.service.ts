@@ -81,6 +81,13 @@ export const requestOTP = async (
       },
     });
 
+    if (response.requestOtp?.message === 'Full Request for day') {
+      return {
+        success: false,
+        message: 'Failed to send OTP',
+      };
+    }
+
     if (response.requestOtp?.message) {
       return {
         success: true,
@@ -118,6 +125,8 @@ export const verifyOTP = async (
       phone: input.phone.replace(/(\d{3})\d+(\d{4})/, '$1****$2'),
     });
 
+    console.log('OTP PHONE', input.otp);
+
     const response = await client.request<any>(VERIFY_OTP_MUTATION, {
       data: {
         code: input.otp,
@@ -126,6 +135,15 @@ export const verifyOTP = async (
         phone: input.phone,
       },
     });
+
+    console.log('RESPONSE123', response);
+
+    if (response.verifyOtp?.message === 'OTP_NOT_FOUND') {
+      return {
+        success: false,
+        message: 'Invalid OTP',
+      };
+    }
 
     if (response.verifyOtp?.message) {
       // OTP verified successfully

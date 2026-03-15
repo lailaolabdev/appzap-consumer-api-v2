@@ -7,7 +7,7 @@ import {
   strictRateLimiter,
 } from '../middleware/rateLimit.middleware';
 
-const router = Router();
+const router:Router = Router();
 
 /**
  * @route   POST /v1/auth/request-otp
