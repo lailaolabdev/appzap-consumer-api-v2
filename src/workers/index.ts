@@ -5,6 +5,7 @@
 
 import './subscriptionOrder.worker';
 import './supplierSync.worker';
+import './notification.worker';
 
 import logger from '../utils/logger';
 

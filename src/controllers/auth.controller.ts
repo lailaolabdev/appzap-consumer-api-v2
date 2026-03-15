@@ -19,6 +19,18 @@ export const requestOTP = async (req: Request, res: Response): Promise<void> => 
   try {
     const { phone, platform, header } = req.body;
 
+    // Dev bypass: skip phone validation and external Auth API call
+    if (config.nodeEnv !== 'production') {
+      logger.info('DEV MODE: OTP request bypassed', { phone });
+      res.json({
+        success: true,
+        message: 'DEV MODE: OTP sent (use 000000)',
+        referenceId: 'dev-ref-id',
+        expiresIn: 300,
+      });
+      return;
+    }
+
     // Validate phone format
     if (!phone || !phoneUtils.isValidLaoPhone(phone)) {
       throw new ValidationError('Invalid Lao phone number format', { field: 'phone' });
@@ -75,6 +87,60 @@ export const verifyOTP = async (req: Request, res: Response): Promise<void> => {
       throw new ValidationError('Phone and OTP are required', {
         fields: ['phone', 'otp'],
       });
+    }
+
+    // Dev bypass: accept OTP 000000, skip phone validation and Auth API
+    if (config.nodeEnv !== 'production' && otp === '000000') {
+      logger.info('DEV MODE: OTP verification bypassed', { phone });
+
+      const normalizedPhone = phone.replace(/\D/g, '');
+
+      // Find or create user in Consumer DB (same logic as production path)
+      let user = await User.findOne({ phone: normalizedPhone });
+
+      if (!user) {
+        user = await User.create({
+          phone: normalizedPhone,
+          roles: ['consumer'],
+          activeProfile: 'personal',
+          points: { balance: 0, tier: 'bronze', totalEarned: 0, totalRedeemed: 0 },
+          firstLogin: true,
+          hasCompletedOnboarding: false,
+        });
+
+        await LoyaltyTransaction.create({
+          userId: user._id,
+          type: 'bonus',
+          amount: 0,
+          source: 'welcome_bonus',
+          description: 'Account created (dev mode)',
+          balanceBefore: 0,
+          balanceAfter: 0,
+        });
+
+        logger.info('DEV MODE: New user created', { userId: user._id.toString(), phone: normalizedPhone });
+      } else {
+        user.lastLogin = new Date();
+        user.firstLogin = false;
+        await user.save();
+      }
+
+      const accessToken = generateAccessToken(user);
+      const refreshToken = generateRefreshToken(user._id.toString());
+
+      await redisHelpers.setWithTTL(
+        `refresh:${user._id}`,
+        refreshToken,
+        30 * 24 * 60 * 60
+      );
+
+      res.json({
+        accessToken,
+        refreshToken,
+        marketAccessToken: null,
+        user: user.toJSON(),
+      });
+      return;
     }
 
     if (!phoneUtils.isValidLaoPhone(phone)) {

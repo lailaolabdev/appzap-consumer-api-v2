@@ -250,7 +250,7 @@ export const addEmailJob = async (emailData: {
 };
 
 /**
- * Add job to notification queue
+ * Add job to notification queue (single user notification)
  */
 export const addNotificationJob = async (notificationData: {
   userId: string;
@@ -260,6 +260,24 @@ export const addNotificationJob = async (notificationData: {
 }) => {
   const job = await notificationQueue.add(notificationData);
   logger.info('📋 Notification job added', { jobId: job.id, userId: notificationData.userId });
+  return job;
+};
+
+/**
+ * Add broadcast job to notification queue
+ */
+export const addBroadcastJob = async (broadcastData: {
+  title: string;
+  body: string;
+  deepLinkUrl?: string;
+  fcmTokens: string[];
+  broadcastId: string;
+}) => {
+  const job = await notificationQueue.add(broadcastData, {
+    attempts: 2,
+    backoff: { type: 'exponential' as const, delay: 5000 },
+  });
+  logger.info('📋 Broadcast job added', { jobId: job.id, broadcastId: broadcastData.broadcastId });
   return job;
 };
 
@@ -349,6 +367,7 @@ export default {
   addSubscriptionOrderJob,
   addEmailJob,
   addNotificationJob,
+  addBroadcastJob,
   addPosSyncJob,
   addSupplierSyncJob,
   getQueuesHealth,
